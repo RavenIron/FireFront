@@ -110,7 +110,11 @@ concurrent-burn cap and a FIFO overflow queue.
   reflected path is kept only as a secondary fallback if the raycast
   itself somehow finds nothing.
 
-## Scope (locked)
+## Scope (original 0.1 spec — historical)
+
+*The numbers below are the original locked spec. Most have since been widened
+for real-world testing — current defaults live in `Config/FireConfig.cs` and
+print live via `firestatus`.*
 
 - **Ignition:** vanilla fire damage on a piece with `m_burnable = true`. No new
   ignition triggers, no flammability changes, no drop logic changes.
@@ -428,14 +432,15 @@ drift in those files only. Verified July 2026 against
   save and reload the world/session after installing 0.3.2** — the fix stops
   it from recurring, but doesn't retroactively repair state already
   corrupted in the running session.
-- Trees are hard-removed (no `SpawnLog` felling animation, no log drop) —
-  vanilla trees carry a fire-resistance modifier that makes real fire damage
-  do effectively nothing to their health, so there's no way to make them die
-  "naturally" from fire through the normal damage system. Logs and pieces
-  are also hard-removed via their own direct destroy methods, no drop either
-  — all three burn-down paths are consistent with each other. If you want
-  trees to actually drop logs when they burn down, that's a bigger follow-up
-  (finding and safely invoking `SpawnLog`).
+- ~~Trees are hard-removed (no `SpawnLog` felling animation, no log drop)~~ —
+  **superseded in 0.7.x**: `KillBurningTarget` now calls vanilla's own
+  `TreeBase.SpawnLog` first (real felling, real drops), falling back to
+  `ZNetView.Destroy()` only if the tree somehow survives it. Felled logs
+  drop too — `TreeLog.Destroy(null)` is vanilla's own destroy and spawns
+  the real `m_dropWhenDestroyed` list (verified against the decompiled
+  body). The original blocker stands, though: vanilla trees resist fire
+  damage almost entirely, so burn-down still can't happen "naturally"
+  through the damage system — FireFront's own burn timer does the killing.
 - Visuals: see the corrected write-up in Scope above (0.5.0) — vanilla
   prefab spawning was fundamentally unsafe for anything with a ZNetView
   (which is nearly all fire-related prefabs), so the safe default is the
