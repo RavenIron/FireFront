@@ -1760,7 +1760,11 @@ namespace FireFront.Utils
         // instead of ZDOID); that's a follow-up, not covered here.
         // -----------------------------------------------------------------
 
-        private const string RpcIgniteRequest = "FireFront_IgniteRequest";
+        // "2" suffix (0.17.3): the ignite request now carries the igniter's player id
+        // for cross-mod arson attribution. A renamed RPC makes a version-mismatched
+        // client/server pair no-op cleanly (requests silently dropped, visible in
+        // IGNITE-TRACE) instead of half-deserializing the old single-argument shape.
+        private const string RpcIgniteRequest = "FireFront_IgniteRequest2";
 
         // GetServerPeerID() is IL-flagged public in the publicized reference DLL
         // used to compile against, but throws MethodAccessException at actual
@@ -1817,13 +1821,54 @@ namespace FireFront.Utils
         public static bool IsServer() => ZNet.instance != null && ZNet.instance.IsServer();
 
         /// <summary>
+        /// The persistent player id behind a hit's attacker, or 0 when there is none —
+        /// environmental fire (campfire embers, Ashlands rain) has no attacker, and a
+        /// creature attacker has no player id. Resolved from the attacker ZDO directly on
+        /// whatever peer processes the damage: the attacker is standing right there
+        /// attacking, so their ZDO is loaded. Every member on this path is genuinely
+        /// public in the real assembly (checked — not just IL-flagged).
+        /// </summary>
+        /// <summary>The local player's persistent id, or 0 headless. For attributing acts
+        /// typed at a console — commands run where they are typed.</summary>
+        public static long LocalPlayerId()
+        {
+            try
+            {
+                return Player.m_localPlayer != null ? Player.m_localPlayer.GetPlayerID() : 0L;
+            }
+            catch (System.Exception)
+            {
+                return 0L;
+            }
+        }
+
+        public static long AttackerPlayerId(HitData hit)
+        {
+            try
+            {
+                if (hit == null || hit.m_attacker == ZDOID.None) return 0L;
+                if (ZDOMan.instance == null) return 0L;
+
+                ZDO attacker = ZDOMan.instance.GetZDO(hit.m_attacker);
+                if (attacker == null) return 0L;
+
+                return attacker.GetLong(ZDOVars.s_playerID, 0L);
+            }
+            catch (System.Exception ex)
+            {
+                FireLogger.Debug($"[IGNITE-TRACE] AttackerPlayerId threw: {ex.Message}");
+                return 0L;
+            }
+        }
+
+        /// <summary>
         /// Registers all four RPCs. Safe to call multiple times (ZRoutedRpc.Register
         /// just overwrites the prior handler for that name) but callers should
         /// still guard with a one-shot flag once ZRoutedRpc.instance exists —
         /// it doesn't exist yet at plugin Awake(), same as ZNet.instance.
         /// </summary>
         public static void RegisterFireRpcs(
-            System.Action<long, ZDOID> onIgniteRequest,
+            System.Action<long, ZDOID, long> onIgniteRequest,
             System.Action<long, ZDOID, bool> onFireEvent,
             System.Action<long, ZPackage> onGroundFireSync,
             System.Action<long, ZDOID, Vector3, float> onExtinguishRequest)
@@ -1843,7 +1888,7 @@ namespace FireFront.Utils
                 // "BadImageFormatException: Method has zero rva" specifically on
                 // the 3-generic-parameter RoutedMethod (extinguish-request), and
                 // the unnecessary extra closure layer is the prime suspect.
-                ZRoutedRpc.instance.Register<ZDOID>(RpcIgniteRequest, onIgniteRequest);
+                ZRoutedRpc.instance.Register<ZDOID, long>(RpcIgniteRequest, onIgniteRequest);
                 ZRoutedRpc.instance.Register<ZDOID, bool>(RpcFireEvent, onFireEvent);
                 ZRoutedRpc.instance.Register<ZPackage>(RpcGroundFireSync, onGroundFireSync);
                 ZRoutedRpc.instance.Register<ZDOID, Vector3, float>(RpcExtinguishRequest, onExtinguishRequest);
@@ -1855,8 +1900,11 @@ namespace FireFront.Utils
             }
         }
 
-        /// <summary>Client → server: "something I own just took fire damage, please ignite it."</summary>
-        public static void SendIgniteRequestToServer(ZDOID id)
+        /// <summary>Client → server: "something I own just took fire damage, please ignite it."
+        /// Carries the ATTACKER's persistent player id (0 = unknown/natural), extracted from
+        /// the HitData at the patch — the RPC sender is the object's OWNER, and the owner is
+        /// not the arsonist when someone torches a piece in another player's loaded area.</summary>
+        public static void SendIgniteRequestToServer(ZDOID id, long igniterPlayerId)
         {
             try
             {
@@ -1867,9 +1915,9 @@ namespace FireFront.Utils
                 }
 
                 long serverPeerId = GetServerPeerId();
-                FireLogger.Debug($"[IGNITE-TRACE] SendIgniteRequestToServer: targeting peer {serverPeerId} with ZDOID={id}.");
+                FireLogger.Debug($"[IGNITE-TRACE] SendIgniteRequestToServer: targeting peer {serverPeerId} with ZDOID={id}, igniter={igniterPlayerId}.");
 
-                ZRoutedRpc.instance.InvokeRoutedRPC(serverPeerId, RpcIgniteRequest, id);
+                ZRoutedRpc.instance.InvokeRoutedRPC(serverPeerId, RpcIgniteRequest, id, igniterPlayerId);
                 FireLogger.Debug("[IGNITE-TRACE] InvokeRoutedRPC call completed without throwing.");
             }
             catch (System.Exception ex)

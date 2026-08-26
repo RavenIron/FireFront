@@ -42,10 +42,12 @@ namespace FireFront.Patches
             // See WearNTearRpcDamagePatch for why this branches on server
             // authority — RPC_Damage runs on whichever peer owns the ZDO, which
             // is very often a client, not the server.
+            long igniter = ValheimBridge.AttackerPlayerId(hit);   // attacker, not sender — see WearNTear patch
+
             if (ValheimBridge.IsServer())
             {
-                FireLogger.Debug($"[IGNITE-TRACE] IsServer=True — igniting {ValheimBridge.NameOf(__instance)} directly.");
-                FireManager.Instance.TryIgnite(__instance);
+                FireLogger.Debug($"[IGNITE-TRACE] IsServer=True — igniting {ValheimBridge.NameOf(__instance)} directly (igniter={igniter}).");
+                FireManager.Instance.TryIgnite(__instance, igniter);
             }
             else
             {
@@ -53,7 +55,7 @@ namespace FireFront.Patches
                 if (id.HasValue)
                 {
                     FireLogger.Debug($"[IGNITE-TRACE] IsServer=False — forwarding ignite request for {ValheimBridge.NameOf(__instance)}, ZDOID={id.Value}.");
-                    ValheimBridge.SendIgniteRequestToServer(id.Value);
+                    ValheimBridge.SendIgniteRequestToServer(id.Value, igniter);
                 }
                 else
                 {

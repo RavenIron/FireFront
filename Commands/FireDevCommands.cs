@@ -109,7 +109,8 @@ namespace FireFront.Commands
                 ZDOID? id = ValheimBridge.ZDOIDOf(target);
                 if (id.HasValue)
                 {
-                    ValheimBridge.SendIgniteRequestToServer(id.Value);
+                    // The typist is the igniter — commands run where they are typed.
+                    ValheimBridge.SendIgniteRequestToServer(id.Value, ValheimBridge.LocalPlayerId());
                     Say(args, $"Sent ignite request to server: {ValheimBridge.NameOf(target)}");
                 }
                 else

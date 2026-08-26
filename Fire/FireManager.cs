@@ -174,6 +174,7 @@ namespace FireFront.Fire
             public ZDOID Id;
             public float RetryAt;
             public int Attempts;
+            public long IgniterPlayerId;   // carried so a delayed resolution still attributes
         }
 
         private readonly List<PendingIgniteResolution> _pendingIgniteResolutions = new List<PendingIgniteResolution>();
@@ -216,6 +217,24 @@ namespace FireFront.Fire
         public int BurningCount => _burning.Count;
         public int QueuedCount => _queue.Count;
         public int GroundBurningCount => _groundBurning.Count;
+
+        // Persistent player id of whoever started the CURRENT fire event, captured once
+        // beside _fireOrigin and reset with it. Spread ignitions inherit it implicitly:
+        // they join an event whose origin (and culprit) is already set. 0 = natural or
+        // unknown (environmental fire, creature attackers, dev commands, ground-started
+        // events).
+        private long _fireIgniterPlayerId;
+
+        /// <summary>
+        /// PUBLIC CROSS-MOD CONTRACT (added 0.17.3), the igniter-side companion to
+        /// CollectActiveFirePositions: the persistent player id that started the current
+        /// fire event, 0 when there is no fire or no player behind it. Ragnarok's Wrath
+        /// resolves this property by reflection to book arson HARM in its rivalry ledger.
+        /// Renaming it or changing its meaning silently disarms that attribution — same
+        /// rules as the method below, even though nothing in THIS repo reads it.
+        /// Meaningful on the simulation authority only, like everything else here.
+        /// </summary>
+        public long CurrentFireIgniterPlayerId => _fireIgniterPlayerId;
 
         /// <summary>
         /// External read surface: append the world position of every active fire — burning
@@ -293,6 +312,7 @@ namespace FireFront.Fire
             {
                 _fireStartTime = -1f; // fully out — next ignition ramps up fresh
                 _fireOrigin = null;
+                _fireIgniterPlayerId = 0L; // the event's culprit goes out with its fires
                 _nextSpreadDiagnosticLog = 0f; // next fire reports its candidate counts on its first cycle
                 _groundExhausted.Clear();
             }
@@ -403,10 +423,20 @@ namespace FireFront.Fire
         // ---------------------------------------------------------------
 
         /// <summary>
+        /// Request ignition with no known igniter — spread, dev commands, and any older
+        /// caller. Attribution-aware callers (the ignition patches, the ignite RPC) use
+        /// the overload below; spread deliberately passes nothing because it joins an
+        /// event whose culprit is already captured.
+        /// </summary>
+        public void TryIgnite(Component target) => TryIgnite(target, 0L);
+
+        /// <summary>
         /// Request ignition. Respects vanilla burnability, the concurrent cap,
         /// and the overflow queue. Silent drop when both are full.
+        /// <paramref name="igniterPlayerId"/> is recorded as the fire EVENT's culprit only
+        /// when this ignition starts a fresh event (capture-once, beside _fireOrigin).
         /// </summary>
-        public void TryIgnite(Component target)
+        public void TryIgnite(Component target, long igniterPlayerId)
         {
             // TEMPORARY DIAGNOSTIC — remove once the server-authority question is
             // settled. Purpose: FireManager has no ZNet.instance.IsServer() gating
@@ -438,7 +468,11 @@ namespace FireFront.Fire
             if (_burning.Count < effectiveMax)
             {
                 if (_fireStartTime < 0f) _fireStartTime = Time.time;
-                if (_fireOrigin == null) _fireOrigin = ValheimBridge.PositionOf(target);
+                if (_fireOrigin == null)
+                {
+                    _fireOrigin = ValheimBridge.PositionOf(target);
+                    _fireIgniterPlayerId = igniterPlayerId;   // fresh event: its culprit is set once, here
+                }
                 StartBurning(target, id);
             }
             else if (_queue.TryEnqueue(id))
@@ -961,7 +995,7 @@ namespace FireFront.Fire
         /// that has it registered, and this is deliberately targeted at the
         /// server peer ID, but cheap to double-check.
         /// </summary>
-        private void HandleIgniteRequest(long sender, ZDOID id)
+        private void HandleIgniteRequest(long sender, ZDOID id, long igniterPlayerId)
         {
             if (!ValheimBridge.IsServer())
             {
@@ -969,12 +1003,12 @@ namespace FireFront.Fire
                 return;
             }
 
-            FireLogger.Debug($"[IGNITE-TRACE] Server received ignite request from peer {sender} for ZDOID={id}.");
+            FireLogger.Debug($"[IGNITE-TRACE] Server received ignite request from peer {sender} for ZDOID={id}, igniter={igniterPlayerId}.");
             Component target = ValheimBridge.ComponentFromZdoid(id);
             if (target != null)
             {
                 FireLogger.Debug($"[IGNITE-TRACE] Resolved ZDOID={id} to {ValheimBridge.NameOf(target)} — calling TryIgnite.");
-                TryIgnite(target);
+                TryIgnite(target, igniterPlayerId);
             }
             else
             {
@@ -984,7 +1018,8 @@ namespace FireFront.Fire
                 {
                     Id = id,
                     RetryAt = Time.time + IgniteResolutionRetryInterval,
-                    Attempts = 0
+                    Attempts = 0,
+                    IgniterPlayerId = igniterPlayerId
                 });
             }
         }
@@ -1014,7 +1049,7 @@ namespace FireFront.Fire
                 {
                     FireLogger.Debug($"[IGNITE-TRACE] Retry resolved ZDOID={entry.Id} to {ValheimBridge.NameOf(target)} " +
                                       $"after {entry.Attempts + 1} attempt(s) — calling TryIgnite.");
-                    TryIgnite(target);
+                    TryIgnite(target, entry.IgniterPlayerId);
                     _igniteResolutionScratchIndices.Add(i);
                     continue;
                 }

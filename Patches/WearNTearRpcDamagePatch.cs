@@ -45,10 +45,15 @@ namespace FireFront.Patches
             // that a connected client's RPC_Damage had ignited locally). Only the
             // server should run FireManager's simulation; everyone else forwards
             // the request instead of igniting on their own copy.
+            // The ATTACKER, not the RPC sender: RPC_Damage runs on the object's owner,
+            // and the owner is not the arsonist when someone torches a piece in another
+            // player's loaded area. 0 = natural/creature fire, attributed to nobody.
+            long igniter = ValheimBridge.AttackerPlayerId(hit);
+
             if (ValheimBridge.IsServer())
             {
-                FireLogger.Debug($"[IGNITE-TRACE] IsServer=True — igniting {ValheimBridge.NameOf(__instance)} directly.");
-                FireManager.Instance.TryIgnite(__instance);
+                FireLogger.Debug($"[IGNITE-TRACE] IsServer=True — igniting {ValheimBridge.NameOf(__instance)} directly (igniter={igniter}).");
+                FireManager.Instance.TryIgnite(__instance, igniter);
             }
             else
             {
@@ -56,7 +61,7 @@ namespace FireFront.Patches
                 if (id.HasValue)
                 {
                     FireLogger.Debug($"[IGNITE-TRACE] IsServer=False — forwarding ignite request for {ValheimBridge.NameOf(__instance)}, ZDOID={id.Value}.");
-                    ValheimBridge.SendIgniteRequestToServer(id.Value);
+                    ValheimBridge.SendIgniteRequestToServer(id.Value, igniter);
                 }
                 else
                 {
