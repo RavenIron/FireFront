@@ -1,0 +1,408 @@
+using BepInEx.Configuration;
+using UnityEngine;
+
+namespace FireFront.Config
+{
+    /// <summary>
+    /// All FireFront config. Every value is live-settable via the fireset dev command.
+    /// </summary>
+    public static class FireConfig
+    {
+        public static ConfigEntry<bool> Enabled;
+        public static ConfigEntry<float> BurnDurationSeconds;
+        public static ConfigEntry<float> SpreadRadius;
+        public static ConfigEntry<int> MaxConcurrentBurning;
+        public static ConfigEntry<int> QueueSize;
+        public static ConfigEntry<float> SpreadCheckInterval;
+        public static ConfigEntry<bool> VerboseLogging;
+        public static ConfigEntry<bool> BurnTreesAndLogs;
+        public static ConfigEntry<string> VfxPrefabName;
+        public static ConfigEntry<bool> UseProceduralVfx;
+        public static ConfigEntry<bool> FireSmokeEnabled;
+
+        public static ConfigEntry<bool> GroundSpreadEnabled;
+        public static ConfigEntry<float> GroundCellSize;
+        public static ConfigEntry<float> GroundSpreadRadius;
+        public static ConfigEntry<float> GroundBurnDurationSeconds;
+        public static ConfigEntry<int> GroundMaxConcurrent;
+        public static ConfigEntry<int> MaxKillsPerCycle;
+        public static ConfigEntry<int> GroundVfxMaxConcurrent;
+        public static ConfigEntry<int> GroundDamageMaxConcurrent;
+        public static ConfigEntry<bool> FireHurtsEnabled;
+        public static ConfigEntry<bool> FireHurtsPlayerOnly;
+        public static ConfigEntry<float> FireHurtsObjectRadius;
+        public static ConfigEntry<float> FireDamagePerTick;
+        public static ConfigEntry<float> FireDamageTickInterval;
+        public static ConfigEntry<KeyboardShortcut> ExtinguishKey;
+        public static ConfigEntry<float> ExtinguishGroundRadius;
+        public static ConfigEntry<bool> RainSuppressesGroundFire;
+        public static ConfigEntry<float> RainGroundBurnDurationMultiplier;
+        public static ConfigEntry<bool> ScorchMarksEnabled;
+        public static ConfigEntry<float> ScorchMarkLifetimeSeconds;
+        public static ConfigEntry<bool> UseVanillaDirtPaint;
+        public static ConfigEntry<float> DirtPaintRadius;
+        public static ConfigEntry<bool> FireRampEnabled;
+        public static ConfigEntry<float> FireRampDurationSeconds;
+        public static ConfigEntry<float> FireRampStartFraction;
+        public static ConfigEntry<bool> GroundFuelExhaustionEnabled;
+        public static ConfigEntry<float> GroundFuelRegrowSeconds;
+        public static ConfigEntry<bool> TreeRegrowthEnabled;
+        public static ConfigEntry<float> TreeRegrowthSeconds;
+        public static ConfigEntry<bool> GroundFirebreaksEnabled;
+        public static ConfigEntry<bool> GroundWaterBlocksSpreadEnabled;
+        public static ConfigEntry<bool> WindSpreadBiasEnabled;
+        public static ConfigEntry<float> WindUpwindIgniteChance;
+        public static ConfigEntry<float> WindInfluence;
+        public static ConfigEntry<bool> GroundMaxSpreadDistanceEnabled;
+        public static ConfigEntry<float> GroundMaxSpreadDistance;
+
+        public static void Bind(ConfigFile config)
+        {
+            Enabled = config.Bind(
+                "General", "Enabled", true,
+                "Master switch. When false, no burn timers run and no spread occurs.");
+
+            BurnDurationSeconds = config.Bind(
+                "Fire", "BurnDurationSeconds", 240f,
+                new ConfigDescription(
+                    "Seconds a piece burns before it is destroyed.",
+                    new AcceptableValueRange<float>(1f, 600f)));
+
+            SpreadRadius = config.Bind(
+                "Fire", "SpreadRadius", 8f,
+                new ConfigDescription(
+                    "Max distance (meters) from an actively burning piece for spread to occur. " +
+                    "Originally locked to 2-4m per the initial spec; widened to allow testing " +
+                    "wider spread since real object spacing often exceeds that.",
+                    new AcceptableValueRange<float>(2f, 15f)));
+
+            MaxConcurrentBurning = config.Bind(
+                "Fire", "MaxConcurrentBurning", 50,
+                new ConfigDescription(
+                    "Hard cap on pieces burning at the same time.",
+                    new AcceptableValueRange<int>(1, 200)));
+
+            QueueSize = config.Bind(
+                "Fire", "QueueSize", 20,
+                new ConfigDescription(
+                    "FIFO overflow queue slots. Ignitions past the concurrent cap wait here. Overflow beyond the queue drops silently and is re-attempted next cycle. " +
+                    "Originally locked to 5-10 per the initial spec; widened for testing with bigger fires.",
+                    new AcceptableValueRange<int>(5, 100)));
+
+            SpreadCheckInterval = config.Bind(
+                "Fire", "SpreadCheckInterval", 0.75f,
+                new ConfigDescription(
+                    "Seconds between spread/queue-promotion cycles.",
+                    new AcceptableValueRange<float>(0.25f, 10f)));
+
+            VerboseLogging = config.Bind(
+                "Debug", "VerboseLogging", true,
+                "Log every ignite/spread/queue/destroy event.");
+
+            BurnTreesAndLogs = config.Bind(
+                "Fire", "BurnTreesAndLogs", true,
+                "Standing trees and felled logs can catch fire and spread alongside structures.");
+
+            VfxPrefabName = config.Bind(
+                "Visuals", "VfxPrefabName", "",
+                "Name of a registered vanilla prefab to spawn on burning targets. " +
+                "Run 'firecheckprefab <name>' first — most fire-related prefabs carry a " +
+                "ZNetView and are refused automatically as unsafe. Empty disables this path. " +
+                "Ignored if UseProceduralVfx is true.");
+
+            UseProceduralVfx = config.Bind(
+                "Visuals", "UseProceduralVfx", true,
+                "Use a small custom particle fire effect built entirely in code instead of a " +
+                "vanilla prefab. Won't look identical to vanilla fire, but has zero ZNetView/" +
+                "ZNetScene dependency — safe by construction. Takes priority over VfxPrefabName. " +
+                "Defaults to true: without any visual, fire is simulated but invisible, and " +
+                "'nothing is happening' was a real, repeated report on a real dedicated-server " +
+                "test purely because this was off with no vfx prefab configured either.");
+
+            FireSmokeEnabled = config.Bind(
+                "Visuals", "FireSmokeEnabled", true,
+                "Object fire (pieces/trees/logs) gets a rising smoke layer above the flame, in " +
+                "addition to the flame itself. Ground fire never gets smoke — it's deliberately " +
+                "kept cheap since up to 200 cells can be burning at once. Turn off if a big fire " +
+                "with many burning objects starts affecting performance.");
+
+            GroundSpreadEnabled = config.Bind(
+                "Ground", "GroundSpreadEnabled", true,
+                "Fire can spread across open ground (grass, gaps between trees) via an " +
+                "invisible grid of burning cells, not just object-to-object. Grass itself " +
+                "has no real game object to ignite — this only affects how far fire reaches.");
+
+            GroundCellSize = config.Bind(
+                "Ground", "GroundCellSize", 1f,
+                new ConfigDescription(
+                    "Size in meters of each ground-fire grid cell. Smaller = finer spread, more cells.",
+                    new AcceptableValueRange<float>(0.5f, 10f)));
+
+            GroundSpreadRadius = config.Bind(
+                "Ground", "GroundSpreadRadius", 4f,
+                new ConfigDescription(
+                    "Max distance (meters) a burning ground cell or object can ignite nearby ground cells.",
+                    new AcceptableValueRange<float>(1f, 20f)));
+
+            GroundBurnDurationSeconds = config.Bind(
+                "Ground", "GroundBurnDurationSeconds", 8f,
+                new ConfigDescription(
+                    "Seconds a ground cell stays burning before it goes out.",
+                    new AcceptableValueRange<float>(1f, 120f)));
+
+            GroundMaxConcurrent = config.Bind(
+                "Ground", "GroundMaxConcurrent", 50,
+                new ConfigDescription(
+                    "Hard cap on concurrently burning ground cells. Cheap (no real objects), so this can be much higher than MaxConcurrentBurning.",
+                    new AcceptableValueRange<int>(1, 2000)));
+
+            MaxKillsPerCycle = config.Bind(
+                "General", "MaxKillsPerCycle", 5,
+                new ConfigDescription(
+                    "Safety throttle: max real objects (pieces/trees/logs) destroyed in a single " +
+                    "cycle. Destroying many ZNetView objects in one frame risked racing with " +
+                    "ZNetScene's own bookkeeping during the ground-spread bug — this keeps any " +
+                    "large simultaneous burn-down spread across multiple cycles instead.",
+                    new AcceptableValueRange<int>(1, 50)));
+
+            GroundVfxMaxConcurrent = config.Bind(
+                "Ground", "GroundVfxMaxConcurrent", 30,
+                new ConfigDescription(
+                    "Max ground-fire cells that get an actual PARTICLE VISUAL at once. Ground fire " +
+                    "can have up to GroundMaxConcurrent (200) cells burning logically; rendering " +
+                    "that many particle effects simultaneously would be a real performance cost. " +
+                    "Does NOT limit damage zones — see GroundDamageMaxConcurrent for that.",
+                    new AcceptableValueRange<int>(0, 200)));
+
+            GroundDamageMaxConcurrent = config.Bind(
+                "Damage", "GroundDamageMaxConcurrent", 50,
+                new ConfigDescription(
+                    "Max ground-fire cells that get a damage zone at once, INDEPENDENT of " +
+                    "GroundVfxMaxConcurrent. Was accidentally sharing the low visual cap through " +
+                    "0.12.1, meaning only ~30 of up to 200 burning cells could ever hurt anyone — " +
+                    "objects (trees/pieces) have their own separate high cap and worked fine, which " +
+                    "is why ground fire felt like it never actually hurt anyone. Defaults to match " +
+                    "GroundMaxConcurrent so every burning cell gets damage coverage by default; a " +
+                    "FireBurnZone's own polling cost is much lower than a full particle system, so " +
+                    "a much higher cap here is fine.",
+                    new AcceptableValueRange<int>(0, 2000)));
+
+            FireHurtsEnabled = config.Bind(
+                "Damage", "FireHurtsEnabled", true,
+                "Standing in fire (object or ground) actually deals damage, via vanilla's own " +
+                "burn-check system (EffectArea/Type.Burning) — the same mechanism real campfires " +
+                "use. Independent of visuals: still works even if VfxPrefabName/UseProceduralVfx " +
+                "are both off, so turning off effects for performance doesn't silently disable this.");
+
+            FireHurtsPlayerOnly = config.Bind(
+                "Damage", "FireHurtsPlayerOnly", false,
+                "If true, only players take damage from fire — creatures/mobs are unaffected. " +
+                "Default false: fire hurts anything standing in it, players and mobs alike.");
+
+            FireHurtsObjectRadius = config.Bind(
+                "Damage", "FireHurtsObjectRadius", 2f,
+                new ConfigDescription(
+                    "Radius (meters) of the damage zone around a burning object (piece/tree/log). " +
+                    "Ground-fire damage zones use half of GroundCellSize instead — no separate setting.",
+                    new AcceptableValueRange<float>(0.5f, 10f)));
+
+            FireDamagePerTick = config.Bind(
+                "Damage", "FireDamagePerTick", 5f,
+                new ConfigDescription(
+                    "Fire damage applied per tick to anything standing in a fire zone (see FireDamageTickInterval).",
+                    new AcceptableValueRange<float>(0.5f, 50f)));
+
+            FireDamageTickInterval = config.Bind(
+                "Damage", "FireDamageTickInterval", 1f,
+                new ConfigDescription(
+                    "Seconds between fire damage ticks for anything standing in a fire zone.",
+                    new AcceptableValueRange<float>(0.1f, 10f)));
+
+            ExtinguishKey = config.Bind(
+                "Controls", "ExtinguishKey", new KeyboardShortcut(KeyCode.G),
+                "Hold/press this key to extinguish fire: the burning object under your crosshair " +
+                "(if any) plus any ground fire within ExtinguishGroundRadius of you. Rebindable — " +
+                "change this if G conflicts with something you use.");
+
+            ExtinguishGroundRadius = config.Bind(
+                "Controls", "ExtinguishGroundRadius", 15f,
+                new ConfigDescription(
+                    "Radius (meters) around the player that ExtinguishKey clears of ground fire.",
+                    new AcceptableValueRange<float>(1f, 15f)));
+
+            RainSuppressesGroundFire = config.Bind(
+                "Weather", "RainSuppressesGroundFire", true,
+                "While it's raining (EnvMan.s_isWet), ground fire can't spread cell-to-cell at all, " +
+                "and any newly-ignited ground cell burns out much faster (see " +
+                "RainGroundBurnDurationMultiplier). Object fire (already-burning structures/trees) " +
+                "is unaffected — a raging building fire keeps going despite rain, but grass fire " +
+                "gets doused. Water-on-contact extinguishing is a planned follow-up.");
+
+            RainGroundBurnDurationMultiplier = config.Bind(
+                "Weather", "RainGroundBurnDurationMultiplier", 0.3f,
+                new ConfigDescription(
+                    "Multiplier applied to GroundBurnDurationSeconds for newly-ignited cells while it's raining. " +
+                    "0.3 = burns out about 70% faster than normal.",
+                    new AcceptableValueRange<float>(0.05f, 1f)));
+
+            ScorchMarksEnabled = config.Bind(
+                "Visuals", "ScorchMarksEnabled", true,
+                "Leave a dark burn-scar decal on the ground where ground fire burned out or was " +
+                "extinguished. Purely cosmetic, self-destructs after ScorchMarkLifetimeSeconds.");
+
+            ScorchMarkLifetimeSeconds = config.Bind(
+                "Visuals", "ScorchMarkLifetimeSeconds", 300f,
+                new ConfigDescription(
+                    "How long a burn-scar decal stays before disappearing. Ignored if UseVanillaDirtPaint is true — real terrain paint is permanent, not timed.",
+                    new AcceptableValueRange<float>(10f, 3600f)));
+
+            UseVanillaDirtPaint = config.Bind(
+                "Visuals", "UseVanillaDirtPaint", false,
+                "Paint REAL bare dirt via vanilla's own terrain system (PaintType.Dirt, the same " +
+                "mechanism the Cultivator uses) instead of the procedural decal. GENUINELY HIGHER " +
+                "RISK than every other visual system in this mod: TerrainComp is networked and " +
+                "writes to persistent per-zone terrain data that gets SAVED TO DISK, unlike " +
+                "anything else here, which is purely runtime and reload-safe. Test-world use only " +
+                "until proven safe. When enabled, this replaces (not adds to) the scorch decal, " +
+                "and the painted dirt is permanent — it does not respect ScorchMarkLifetimeSeconds.");
+
+            DirtPaintRadius = config.Bind(
+                "Visuals", "DirtPaintRadius", 2f,
+                new ConfigDescription(
+                    "Radius (meters) of real dirt painted each time a ground cell burns out and " +
+                    "triggers TryPaintScorchedDirt, if UseVanillaDirtPaint is on. This is a direct " +
+                    "terrain write (TerrainComp.PaintCleared) — no new object is spawned, so a " +
+                    "larger radius covers more ground per call at zero extra instance cost, unlike " +
+                    "the old per-cell piece-spawning approach.",
+                    new AcceptableValueRange<float>(0.5f, 8f)));
+
+            FireRampEnabled = config.Bind(
+                "Fire", "FireRampEnabled", true,
+                "A fire starts weak and gradually intensifies toward its full configured strength " +
+                "over FireRampDurationSeconds, instead of hitting max spread radius and max " +
+                "concurrent cap immediately on first ignition. Resets when a fire fully burns out " +
+                "or clearfires is used, so the next fire ramps up fresh.");
+
+            FireRampDurationSeconds = config.Bind(
+                "Fire", "FireRampDurationSeconds", 600f,
+                new ConfigDescription(
+                    "Seconds from first ignition until a fire reaches full configured intensity " +
+                    "(spread radius, max concurrent caps).",
+                    new AcceptableValueRange<float>(5f, 1200f)));
+
+            FireRampStartFraction = config.Bind(
+                "Fire", "FireRampStartFraction", 0.1f,
+                new ConfigDescription(
+                    "Intensity fraction a brand-new fire starts at (0.25 = 25% of configured " +
+                    "radius/caps), ramping linearly to 100% by FireRampDurationSeconds.",
+                    new AcceptableValueRange<float>(0.05f, 1f)));
+
+            GroundFuelExhaustionEnabled = config.Bind(
+                "Ground", "GroundFuelExhaustionEnabled", true,
+                "Once a ground cell burns out, it can't reignite until GroundFuelRegrowSeconds has " +
+                "passed. Without this, a burned-out cell was free to be re-lit by a neighbor the " +
+                "very next cycle, causing the fire to churn back and forth over the same small " +
+                "footprint instead of advancing outward — the exact pattern that produced patchy, " +
+                "gap-filled burn scars. Time-bounded rather than tied to the whole fire dying out: " +
+                "a long player-sustained fire that never fully extinguishes would otherwise grow " +
+                "the tracking set without limit for the entire session.");
+
+            GroundFuelRegrowSeconds = config.Bind(
+                "Ground", "GroundFuelRegrowSeconds", 90f,
+                new ConfigDescription(
+                    "Seconds after a ground cell burns out before it's eligible to reignite again, " +
+                    "if GroundFuelExhaustionEnabled is true. Independent of whether the overall " +
+                    "fire is still burning elsewhere.",
+                    new AcceptableValueRange<float>(5f, 1200f)));
+
+            TreeRegrowthEnabled = config.Bind(
+                "Trees", "TreeRegrowthEnabled", true,
+                "If true, a tree that finished burning down respawns as the same species after " +
+                "TreeRegrowthSeconds, provided the spot is still clear. Small-scope by design: no " +
+                "stump placeholder while waiting, and pending regrowth does NOT survive a server " +
+                "restart (in-memory only) — a tree mid-regrow when the server restarts simply " +
+                "won't come back.");
+
+            TreeRegrowthSeconds = config.Bind(
+                "Trees", "TreeRegrowthSeconds", 900f,
+                new ConfigDescription(
+                    "Seconds after a tree burns down before it attempts to respawn, if " +
+                    "TreeRegrowthEnabled is true. A blocked spot (something built there since) " +
+                    "retries every 30s for up to ~10 minutes before giving up on that tree.",
+                    new AcceptableValueRange<float>(30f, 7200f)));
+
+            GroundFirebreaksEnabled = config.Bind(
+                "Ground", "GroundFirebreaksEnabled", true,
+                "A ground cell on cleared (real dirt path) or cultivated (tilled) terrain won't " +
+                "ignite from ground-to-ground spread — no grass fuel there, so a real path or " +
+                "tilled strip functions as an actual firebreak. Read-only terrain query, no " +
+                "terrain is modified by this check.");
+
+            GroundWaterBlocksSpreadEnabled = config.Bind(
+                "Ground", "GroundWaterBlocksSpreadEnabled", true,
+                "A ground cell won't ignite if the real terrain height there is at or below the " +
+                "world's actual water level — no grass grows on open water. Without this, ground " +
+                "fire had no way to distinguish land from ocean/lake and could spread straight " +
+                "through water (confirmed: a small island's fire crossed clean through the " +
+                "surrounding water). Read-only terrain query, same as GroundFirebreaksEnabled.");
+
+            WindSpreadBiasEnabled = config.Bind(
+                "Ground", "WindSpreadBiasEnabled", true,
+                "Weight ground-to-ground spread by vanilla's own wind direction (EnvMan.GetWindDir), " +
+                "so the fire front elongates downwind and narrows upwind instead of spreading " +
+                "evenly in all directions. Falls back to unweighted spread if wind can't be read " +
+                "(e.g. EnvMan not initialized yet).");
+
+            WindUpwindIgniteChance = config.Bind(
+                "Ground", "WindUpwindIgniteChance", 0.2f,
+                new ConfigDescription(
+                    "Ignite chance (0-1) for a ground cell directly upwind of the burning cell. " +
+                    "Downwind neighbors always ignite (chance 1.0); this is the floor for the " +
+                    "opposite extreme, linearly interpolated in between by wind angle. Only used " +
+                    "if WindSpreadBiasEnabled is true.",
+                    new AcceptableValueRange<float>(0f, 1f)));
+
+            WindInfluence = config.Bind(
+                "Ground", "WindInfluence", 1f,
+                new ConfigDescription(
+                    "How much the directional weighting from WindUpwindIgniteChance actually " +
+                    "counts. 0 = ignore wind entirely (every neighbor ignites, same as turning " +
+                    "WindSpreadBiasEnabled off); 1 = apply the full upwind/downwind bias. This " +
+                    "is multiplied by vanilla's LIVE wind strength (EnvMan.GetWindIntensity, " +
+                    "itself clamped 0.05-1), so a dead-calm day spreads nearly evenly and a gale " +
+                    "produces a sharply elongated front — through 0.17.1 the bias was applied at " +
+                    "full strength regardless of how hard the wind was actually blowing, which is " +
+                    "why weather changes never visibly altered the fire's shape. Defaults to 1 so " +
+                    "this setting stays out of the way and the live wind alone decides how sharp " +
+                    "the front is; note that even at 1 the bias is softer than the old always-full " +
+                    "behavior at anything below a gale, since intensity still multiplies in. Turn " +
+                    "it DOWN to damp how much weather swings the fire's shape. If wind strength " +
+                    "can't be read, this falls back to full strength so the bias behaves as it did " +
+                    "before rather than silently vanishing.",
+                    new AcceptableValueRange<float>(0f, 1f)));
+
+            GroundMaxSpreadDistanceEnabled = config.Bind(
+                "Ground", "GroundMaxSpreadDistanceEnabled", true,
+                "Leash ground-to-ground spread to GroundMaxSpreadDistance from where the current " +
+                "fire first ignited. Without this, cell-to-adjacent-cell propagation (see " +
+                "IgniteAdjacentGroundCells) has no distance limit at all — only a cap on how many " +
+                "cells burn AT ONCE — so a wind-driven front can march indefinitely away from any " +
+                "player, silently consuming cycles and never reaching the structures/players it " +
+                "would need to be near to actually spread or deal damage. Object-to-ground seeding " +
+                "(a burning piece/tree lighting the ground right around itself) is already bounded " +
+                "by GroundSpreadRadius and effectively never hits this leash.");
+
+            GroundMaxSpreadDistance = config.Bind(
+                "Ground", "GroundMaxSpreadDistance", 40f,
+                new ConfigDescription(
+                    "Max distance (meters) ground fire can travel from the current fire's origin " +
+                    "point (captured once, at first ignition) via cell-to-cell spread, if " +
+                    "GroundMaxSpreadDistanceEnabled is true. Single global origin, not per-fire — " +
+                    "same simplification the ramp clock already makes (see FireRampEnabled) — so a " +
+                    "second, unrelated fire started while an earlier one is still smoldering is " +
+                    "leashed to the FIRST fire's origin, not its own. Origin resets once every fire " +
+                    "fully burns out.",
+                    new AcceptableValueRange<float>(5f, 500f)));
+        }
+    }
+}

@@ -1,0 +1,22 @@
+# Game and framework assemblies - not ours to redistribute.
+libs/
+
+# Build output
+bin/
+obj/
+[Rr]elease/
+[Dd]ebug/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
