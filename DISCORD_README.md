@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.17.2**
+🔥 **FireFront — Tester Build v0.17.3**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -21,7 +21,10 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • Ground fire won't wander more than ~40m from where the fire started
 • Burned trees regrow after ~15 minutes if the spot's still clear
 • Press **G** to extinguish what you're looking at plus ground fire around you
+• Fires now remember who lit them — the whole spreading front carries its arsonist, even fire that crawled a long way from the first spark (natural/creature fire belongs to nobody). Nothing visible in-game yet; it feeds a companion mod's reputation system
 • Everything's config-tunable and adjustable live via console — no restart needed
+
+**Heads-up if updating from an older build:** update server and client together — a mixed-version pair (0.17.3 with anything older) means clicking `ignite` from a client silently does nothing.
 
 **What to expect / known limits**
 • The fire visual is homemade, not a vanilla asset — it'll look like fire, just not *exactly* like Valheim's own fire
