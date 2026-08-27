@@ -36,6 +36,16 @@ namespace FireFront.Patches
         private static GameObject _container; // inactive holder so the clone never runs in-scene
         private static bool _failureLogged;
 
+        // ObjectDB.m_itemByHash is PRIVATE in the real assembly — direct access
+        // compiled against the publicized DLL and threw FieldAccessException at
+        // runtime (confirmed live, client main menu, 0.17.5). m_items proved
+        // public in the same trace (its Add executed before the throw), but
+        // m_recipes is unproven, so both go through reflection.
+        private const BindingFlags AnyInstance = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        private static readonly FieldInfo ItemByHashField = typeof(ObjectDB).GetField("m_itemByHash", AnyInstance);
+        private static readonly FieldInfo ItemsField = typeof(ObjectDB).GetField("m_items", AnyInstance);
+        private static readonly FieldInfo RecipesField = typeof(ObjectDB).GetField("m_recipes", AnyInstance);
+
         /// <summary>Clone the donor once. Null (with one log) if it can't be built.</summary>
         public static GameObject EnsureCreated(ObjectDB db)
         {
@@ -107,17 +117,32 @@ namespace FireFront.Patches
             GameObject prefab = EnsureCreated(db);
             if (prefab == null) return;
 
-            int hash = prefab.name.GetStableHashCode();
-            if (!db.m_itemByHash.ContainsKey(hash))
+            var itemByHash = ItemByHashField?.GetValue(db) as Dictionary<int, GameObject>;
+            var items = ItemsField?.GetValue(db) as List<GameObject>;
+            var recipes = RecipesField?.GetValue(db) as List<Recipe>;
+            if (itemByHash == null || items == null || recipes == null)
             {
-                db.m_items.Add(prefab);
-                db.m_itemByHash.Add(hash, prefab);
+                if (!_failureLogged)
+                {
+                    _failureLogged = true;
+                    FireLogger.Warn("[DOUSING] ObjectDB registries unreadable via reflection " +
+                                    $"(itemByHash {itemByHash == null}, items {items == null}, recipes {recipes == null}) " +
+                                    "— Dousing Bomb unavailable.");
+                }
+                return;
+            }
+
+            int hash = prefab.name.GetStableHashCode();
+            if (!itemByHash.ContainsKey(hash))
+            {
+                items.Add(prefab);
+                itemByHash.Add(hash, prefab);
             }
 
             bool haveRecipe = false;
-            for (int i = 0; i < db.m_recipes.Count; i++)
+            for (int i = 0; i < recipes.Count; i++)
             {
-                if (db.m_recipes[i] != null && db.m_recipes[i].name == RecipeName) { haveRecipe = true; break; }
+                if (recipes[i] != null && recipes[i].name == RecipeName) { haveRecipe = true; break; }
             }
             if (!haveRecipe)
             {
@@ -137,7 +162,7 @@ namespace FireFront.Patches
                         new Piece.Requirement { m_resItem = resin.GetComponent<ItemDrop>(), m_amount = 3 },
                         new Piece.Requirement { m_resItem = scraps.GetComponent<ItemDrop>(), m_amount = 2 },
                     };
-                    db.m_recipes.Add(recipe);
+                    recipes.Add(recipe);
                     FireLogger.Info("[DOUSING] recipe registered (3x Resin + 2x Leather scraps -> 3 bombs, hand-craftable).");
                 }
                 else
@@ -152,25 +177,62 @@ namespace FireFront.Patches
         }
     }
 
+    // Every registration postfix swallows its own failure with one warning:
+    // an exception escaping a postfix surfaces as a raw Unity error inside
+    // vanilla's own setup path (seen live in 0.17.5), and a broken tester
+    // item must degrade to "item missing", never to "menu spams errors".
     [HarmonyPatch(typeof(ObjectDB), "Awake")]
     public static class ObjectDBAwakeDousingPatch
     {
-        private static void Postfix(ObjectDB __instance) => DousingBomb.RegisterIntoObjectDB(__instance);
+        private static bool _thrown;
+
+        private static void Postfix(ObjectDB __instance)
+        {
+            try { DousingBomb.RegisterIntoObjectDB(__instance); }
+            catch (System.Exception ex)
+            {
+                if (_thrown) return;
+                _thrown = true;
+                FireLogger.Warn($"[DOUSING] registration threw at ObjectDB.Awake: {ex.Message} — Dousing Bomb unavailable.");
+            }
+        }
     }
 
     [HarmonyPatch(typeof(ObjectDB), "CopyOtherDB")]
     public static class ObjectDBCopyDousingPatch
     {
-        private static void Postfix(ObjectDB __instance) => DousingBomb.RegisterIntoObjectDB(__instance);
+        private static bool _thrown;
+
+        private static void Postfix(ObjectDB __instance)
+        {
+            try { DousingBomb.RegisterIntoObjectDB(__instance); }
+            catch (System.Exception ex)
+            {
+                if (_thrown) return;
+                _thrown = true;
+                FireLogger.Warn($"[DOUSING] registration threw at ObjectDB.CopyOtherDB: {ex.Message} — Dousing Bomb unavailable.");
+            }
+        }
     }
 
     [HarmonyPatch(typeof(ZNetScene), "Awake")]
     public static class ZNetSceneAwakeDousingPatch
     {
+        private static bool _thrown;
+
         private static void Postfix(ZNetScene __instance)
         {
-            GameObject prefab = DousingBomb.EnsureCreated(ObjectDB.instance);
-            if (prefab != null) ValheimBridge.RegisterPrefabWithZNetScene(__instance, prefab);
+            try
+            {
+                GameObject prefab = DousingBomb.EnsureCreated(ObjectDB.instance);
+                if (prefab != null) ValheimBridge.RegisterPrefabWithZNetScene(__instance, prefab);
+            }
+            catch (System.Exception ex)
+            {
+                if (_thrown) return;
+                _thrown = true;
+                FireLogger.Warn($"[DOUSING] registration threw at ZNetScene.Awake: {ex.Message} — Dousing Bomb unavailable.");
+            }
         }
     }
 
