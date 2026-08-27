@@ -4,6 +4,7 @@ libs/
 # Build output
 bin/
 obj/
+dist/
 [Rr]elease/
 [Dd]ebug/
 
