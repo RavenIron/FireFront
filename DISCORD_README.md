@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.17.4**
+🔥 **FireFront — Tester Build v0.17.5**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -21,7 +21,8 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • Dirt paths and cultivated ground are real firebreaks; water stops spread too
 • Ground fire won't wander more than ~40m from where the fire started
 • Burned trees regrow after ~15 minutes if the spot's still clear
-• Press **G** to extinguish what you're looking at plus ground fire around you
+• Press **G** to extinguish what you're looking at plus all fire around you — ground fire *and* burning structures/trees
+• **New in 0.17.5: the Dousing Bomb.** A throwable that puts fire OUT — everything within ~6m of where it lands, grass fire and burning buildings/trees alike. Hand-craftable anywhere, cheap on purpose: 3 Resin + 2 Leather scraps makes 3 bombs. (It borrows the ooze bomb's look for now — yes, the fire extinguisher is green. Art later, function first.) Fight a fire for real instead of just G-spamming next to it.
 • Fires now remember who lit them — the whole spreading front carries its arsonist, even fire that crawled a long way from the first spark (natural/creature fire belongs to nobody). Nothing visible in-game yet; it feeds a companion mod's reputation system
 • Everything's config-tunable and adjustable live via console — no restart needed
 

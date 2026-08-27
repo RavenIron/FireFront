@@ -366,7 +366,8 @@ namespace FireFront.Fire
                     didSomething = true;
                 }
 
-                int cleared = ExtinguishGroundNear(posOrNull.Value, FireConfig.ExtinguishGroundRadius.Value);
+                int cleared = ExtinguishGroundNear(posOrNull.Value, FireConfig.ExtinguishGroundRadius.Value)
+                            + ExtinguishObjectsNear(posOrNull.Value, FireConfig.ExtinguishGroundRadius.Value);
                 if (cleared > 0) didSomething = true;
 
                 if (didSomething) ValheimBridge.ShowPlayerMessage("Fire extinguished");
@@ -386,7 +387,15 @@ namespace FireFront.Fire
             }
         }
 
-        /// <summary>Server-side handler for a client's extinguish-key press.</summary>
+        /// <summary>
+        /// Server-side handler for a client's extinguish request — the G key
+        /// and the Dousing Bomb both land here (the bomb passes ZDOID.None and
+        /// its impact point). Since 0.17.5 the radius also clears burning
+        /// OBJECTS, not just ground cells: a bomb landing on a burning tree
+        /// obviously must put it out, and the same coherence applies to the
+        /// key ("clear the fire around me" shouldn't ignore a burning wall
+        /// 2m away just because the crosshair missed it).
+        /// </summary>
         private void HandleExtinguishRequest(long sender, ZDOID targetId, Vector3 playerPos, float groundRadius)
         {
             if (!ValheimBridge.IsServer()) return;
@@ -397,7 +406,43 @@ namespace FireFront.Fire
                 if (target != null && IsBurning(target)) Extinguish(target);
             }
 
-            ExtinguishGroundNear(playerPos, groundRadius);
+            ExtinguishAt(playerPos, groundRadius);
+        }
+
+        /// <summary>
+        /// Extinguish everything — ground cells and burning objects — within
+        /// radius of a point. The Dousing Bomb's impact effect; also what the
+        /// extinguish radius means since 0.17.5.
+        /// </summary>
+        public void ExtinguishAt(Vector3 origin, float radius)
+        {
+            ExtinguishObjectsNear(origin, radius);
+            ExtinguishGroundNear(origin, radius);
+        }
+
+        /// <summary>
+        /// Removes every burning OBJECT within radius of a position. Works from
+        /// the cached BurningState positions, so it needs no live instance —
+        /// fine headless. Mirrors Extinguish(Component)'s no-broadcast
+        /// contract; clients reconcile the same way they do for the key path.
+        /// </summary>
+        public int ExtinguishObjectsNear(Vector3 origin, float radius)
+        {
+            float radiusSqr = radius * radius;
+            _scratch.Clear();
+            foreach (KeyValuePair<ZDOID, BurningState> kv in _burning)
+            {
+                if ((kv.Value.Position - origin).sqrMagnitude <= radiusSqr) _scratch.Add(kv.Key);
+            }
+            foreach (ZDOID id in _scratch)
+            {
+                _burning.Remove(id);
+                _queue.Remove(id);
+                RemoveVfxFor(id);
+            }
+            if (_scratch.Count > 0)
+                FireLogger.Debug($"Extinguished {_scratch.Count} burning object(s) within {radius:F1}m.");
+            return _scratch.Count;
         }
 
         /// <summary>Removes every ground cell within radius of a position. Returns how many were cleared.</summary>
@@ -592,6 +637,7 @@ namespace FireFront.Fire
                    $"realpermanent (paintedcells {_groundPainted.Count}, regrowntrees {_treesRegrownCount}), " +
                    $"wind {FireConfig.WindSpreadBiasEnabled.Value} (upwindchance {FireConfig.WindUpwindIgniteChance.Value:F2}, " +
                    $"influence {FireConfig.WindInfluence.Value:F2}, live intensity {WindIntensityForStatus()}), " +
+                   $"dousingradius {FireConfig.DousingBombRadius.Value}m, " +
                    $"groundleash {FireConfig.GroundMaxSpreadDistanceEnabled.Value} ({FireConfig.GroundMaxSpreadDistance.Value}m), " +
                    $"ramp {(GetRampFraction() * 100f):F0}% (enabled {FireConfig.FireRampEnabled.Value}, start {(FireConfig.FireRampStartFraction.Value * 100f):F0}%, duration {FireConfig.FireRampDurationSeconds.Value}s), " +
                    $"enabled {FireConfig.Enabled.Value}";

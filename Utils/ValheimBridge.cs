@@ -259,6 +259,23 @@ namespace FireFront.Utils
         }
 
         /// <summary>
+        /// Insert a runtime-created prefab into ZNetScene's name-hash registry
+        /// so network spawns (dropped items, etc.) can resolve it. Idempotent.
+        /// </summary>
+        public static void RegisterPrefabWithZNetScene(ZNetScene scene, GameObject prefab)
+        {
+            if (scene == null || prefab == null) return;
+            var named = ZNetSceneNamedPrefabsField?.GetValue(scene) as Dictionary<int, GameObject>;
+            if (named == null)
+            {
+                FireLogger.Warn($"[DOUSING] m_namedPrefabs unreadable — '{prefab.name}' not visible to network spawns.");
+                return;
+            }
+            int hash = prefab.name.GetStableHashCode();
+            if (!named.ContainsKey(hash)) named.Add(hash, prefab);
+        }
+
+        /// <summary>
         /// Collect every burnable object the ZDO layer knows about within
         /// radius of center, whether or not a GameObject exists for it on this
         /// peer. Verified against the decompiled DLL: ZDOMan.FindSectorObjects

@@ -53,6 +53,7 @@ namespace FireFront.Config
         public static ConfigEntry<bool> WindSpreadBiasEnabled;
         public static ConfigEntry<float> WindUpwindIgniteChance;
         public static ConfigEntry<float> WindInfluence;
+        public static ConfigEntry<float> DousingBombRadius;
         public static ConfigEntry<bool> GroundMaxSpreadDistanceEnabled;
         public static ConfigEntry<float> GroundMaxSpreadDistance;
 
@@ -380,6 +381,15 @@ namespace FireFront.Config
                     "can't be read, this falls back to full strength so the bias behaves as it did " +
                     "before rather than silently vanishing.",
                     new AcceptableValueRange<float>(0f, 1f)));
+
+            DousingBombRadius = config.Bind(
+                "Items", "DousingBombRadius", 6f,
+                new ConfigDescription(
+                    "Radius (meters) cleared of fire — ground cells and burning objects both — where a " +
+                    "thrown Dousing Bomb lands. The bomb itself (cloned from vanilla's ooze bomb, " +
+                    "hand-craftable from 3 Resin + 2 Leather scraps) always exists; this only tunes " +
+                    "how much fire one throw puts out.",
+                    new AcceptableValueRange<float>(1f, 15f)));
 
             GroundMaxSpreadDistanceEnabled = config.Bind(
                 "Ground", "GroundMaxSpreadDistanceEnabled", true,
