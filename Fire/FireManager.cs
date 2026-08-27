@@ -196,6 +196,15 @@ namespace FireFront.Fire
         // Reused each cycle to avoid per-frame allocation.
         private readonly List<ZDOID> _scratch = new List<ZDOID>();
         private readonly List<Component> _candidates = new List<Component>();
+
+        // ZDO-layer spread candidates. [SPREAD-DIAGNOSTIC] on the live dedicated
+        // server (0.17.3) showed the instance scans behind _candidates see
+        // NOTHING there — AllPieces.Count=0, total candidates=0 with a forest
+        // actively burning around the player — because a headless server tracks
+        // world objects as ZDOs without instantiating GameObjects. Same objects,
+        // read from the ZDO layer instead; an instance is force-created per
+        // actual ignition (ComponentFromZdoid), never per nearby candidate.
+        private readonly List<ValheimBridge.ZdoBurnable> _zdoCandidates = new List<ValheimBridge.ZdoBurnable>();
         private readonly List<GroundCellKey> _groundScratch = new List<GroundCellKey>();
         private readonly List<GroundCellKey> _exhaustedScratch = new List<GroundCellKey>();
 
@@ -1566,6 +1575,7 @@ namespace FireFront.Fire
             float nearestDist = nearestSqr == float.MaxValue ? -1f : Mathf.Sqrt(nearestSqr);
             FireLogger.Info($"[SPREAD-DIAGNOSTIC] WearNTear.AllPieces.Count={pieceCount}, " +
                              $"total candidates (pieces+trees+logs)={_candidates.Count}, " +
+                             $"zdoCandidates={_zdoCandidates.Count}, " +
                              $"candidates within SpreadRadius of first burner={candidatesInRange}, " +
                              $"nearest candidate='{nearestName}' at {nearestDist:F2}m " +
                              $"(SpreadRadius={FireConfig.SpreadRadius.Value}m). " +
@@ -1616,6 +1626,7 @@ namespace FireFront.Fire
                     }
                 }
 
+                IgniteZdoCandidatesNear(origin, objRadiusSqr);
                 IgniteGroundNear(origin, groundRadius);
             }
 
@@ -1646,6 +1657,8 @@ namespace FireFront.Fire
                             TryIgnite(candidate);
                         }
                     }
+
+                    IgniteZdoCandidatesNear(origin, groundRadius * groundRadius);
                 }
             }
         }
@@ -1671,6 +1684,72 @@ namespace FireFront.Fire
 
                 TreeLog[] logs = Object.FindObjectsOfType<TreeLog>();
                 for (int i = 0; i < logs.Length; i++) _candidates.Add(logs[i]);
+            }
+
+            // ZDO-layer candidates — see _zdoCandidates for why. One scan around
+            // the fire's origin covers the whole event: cell-to-cell spread is
+            // leashed to GroundMaxSpreadDistance from that origin, so origin +
+            // leash + the object-spread reach bounds everything a burner could
+            // touch this cycle. Leash off means an unbounded front; 100m of
+            // coverage beyond the origin is accepted as the practical limit
+            // there rather than scanning ever-wider rings every cycle.
+            Vector3? scanCenter = _fireOrigin;
+            if (!scanCenter.HasValue)
+            {
+                foreach (BurningState state in _burning.Values) { scanCenter = state.Position; break; }
+            }
+            if (!scanCenter.HasValue)
+            {
+                foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
+                {
+                    scanCenter = CellCenter(kv.Key, kv.Value.Y);
+                    break;
+                }
+            }
+
+            if (scanCenter.HasValue)
+            {
+                float reach = Mathf.Max(FireConfig.SpreadRadius.Value, FireConfig.GroundSpreadRadius.Value);
+                float leash = FireConfig.GroundMaxSpreadDistanceEnabled.Value
+                    ? FireConfig.GroundMaxSpreadDistance.Value
+                    : 100f;
+                ValheimBridge.CollectBurnableZdosNear(
+                    scanCenter.Value, leash + reach + 8f,
+                    FireConfig.BurnTreesAndLogs.Value, _zdoCandidates);
+            }
+            else
+            {
+                _zdoCandidates.Clear();
+            }
+        }
+
+        /// <summary>
+        /// ZDO-layer half of spread ignition: ignite any burnable ZDO within
+        /// range of a burner, force-creating its GameObject only on an actual
+        /// range hit — and only when there's room to burn or queue it, so a
+        /// capped-out fire doesn't instantiate a forest it can't ignite yet.
+        /// Anything already burning or queued is skipped before any instance
+        /// is created; TryIgnite's own dedupe covers the rest (including an
+        /// object the instance loop above already ignited this cycle).
+        /// </summary>
+        private void IgniteZdoCandidatesNear(Vector3 origin, float radiusSqr)
+        {
+            if (_zdoCandidates.Count == 0) return;
+
+            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.MaxConcurrentBurning.Value * GetRampFraction()));
+
+            for (int i = 0; i < _zdoCandidates.Count; i++)
+            {
+                if (_burning.Count >= effectiveMax && _queue.Count >= _queue.Capacity) return;
+
+                ValheimBridge.ZdoBurnable candidate = _zdoCandidates[i];
+                if ((candidate.Position - origin).sqrMagnitude > radiusSqr) continue;
+                if (_burning.ContainsKey(candidate.Id)) continue;
+                if (_queue.Contains(candidate.Id)) continue;
+
+                Component target = ValheimBridge.ComponentFromZdoid(candidate.Id);
+                if (target == null) continue;
+                TryIgnite(target);
             }
         }
     }

@@ -189,6 +189,133 @@ namespace FireFront.Utils
         /// returns ZNetView, but FindInstance(ZDOID) (the one we need, since RPC
         /// params carry ZDOID not a live ZDO reference) returns GameObject.
         /// </summary>
+        // -----------------------------------------------------------------
+        // ZDO-level burnable scan — headless-server spread support
+        // -----------------------------------------------------------------
+        // [SPREAD-DIAGNOSTIC] on the live dedicated server (0.17.3) proved the
+        // instance scans (WearNTear.AllPieces, FindObjectsOfType<TreeBase>) see
+        // NOTHING there — count 0 with a forest actively burning around the
+        // player — because a headless server tracks world objects as ZDOs
+        // without instantiating GameObjects (the same finding ComponentFromZdoid
+        // documents for single targets). Spread candidates must therefore come
+        // from the ZDO layer; instances are force-created per actual ignition,
+        // never per nearby candidate.
+
+        /// <summary>A burnable world object as the ZDO layer sees it — may have no GameObject on this peer.</summary>
+        public struct ZdoBurnable
+        {
+            public ZDOID Id;
+            public Vector3 Position;
+        }
+
+        private static readonly MethodInfo ZdoManFindSectorObjectsMethod =
+            typeof(ZDOMan).GetMethod("FindSectorObjects", AnyInstance, null,
+                new[] { typeof(Vector2i), typeof(int), typeof(int), typeof(List<ZDO>), typeof(List<ZDO>) }, null);
+        private static readonly FieldInfo ZNetSceneNamedPrefabsField =
+            typeof(ZNetScene).GetField("m_namedPrefabs", AnyInstance);
+
+        // Prefab hash -> true when the prefab is a tree or log (so the
+        // BurnTreesAndLogs gate can apply at scan time), false when it's a
+        // burnable piece. Built once — the prefab set is fixed for the session,
+        // and prefabs are loaded assets that exist fine on a headless server.
+        private static Dictionary<int, bool> _burnablePrefabKinds;
+        private static bool _zdoScanFailureLogged;
+        private static readonly List<ZDO> _zdoScanScratch = new List<ZDO>(512);
+
+        private static Dictionary<int, bool> EnsureBurnablePrefabKinds()
+        {
+            if (_burnablePrefabKinds != null) return _burnablePrefabKinds;
+
+            ZNetScene scene = ZNetScene.instance;
+            if (scene == null) return null; // world not up yet — retry next call
+            var named = ZNetSceneNamedPrefabsField?.GetValue(scene) as Dictionary<int, GameObject>;
+            if (named == null || named.Count == 0)
+            {
+                if (!_zdoScanFailureLogged)
+                {
+                    _zdoScanFailureLogged = true;
+                    FireLogger.Debug("[ZDO-SCAN] m_namedPrefabs unreadable or empty — ZDO-layer spread candidates unavailable.");
+                }
+                return null;
+            }
+
+            var kinds = new Dictionary<int, bool>();
+            foreach (KeyValuePair<int, GameObject> kv in named)
+            {
+                GameObject prefab = kv.Value;
+                if (prefab == null) continue;
+                if (prefab.GetComponent<TreeBase>() != null || prefab.GetComponent<TreeLog>() != null)
+                {
+                    kinds[kv.Key] = true;
+                    continue;
+                }
+                WearNTear wnt = prefab.GetComponent<WearNTear>();
+                if (wnt != null && BurnableField != null && (bool)BurnableField.GetValue(wnt))
+                    kinds[kv.Key] = false;
+            }
+            _burnablePrefabKinds = kinds;
+            FireLogger.Debug($"[ZDO-SCAN] burnable prefab table built: {kinds.Count} prefab hashes.");
+            return kinds;
+        }
+
+        /// <summary>
+        /// Collect every burnable object the ZDO layer knows about within
+        /// radius of center, whether or not a GameObject exists for it on this
+        /// peer. Verified against the decompiled DLL: ZDOMan.FindSectorObjects
+        /// takes a zone coordinate plus a ring count (zones are 64m square),
+        /// and ZoneSystem.GetZone(Vector3) is public static.
+        /// </summary>
+        public static void CollectBurnableZdosNear(Vector3 center, float radius, bool includeTreesAndLogs, List<ZdoBurnable> into)
+        {
+            into.Clear();
+
+            ZDOMan man = ZDOMan.instance;
+            if (man == null || ZdoManFindSectorObjectsMethod == null)
+            {
+                if (!_zdoScanFailureLogged)
+                {
+                    _zdoScanFailureLogged = true;
+                    FireLogger.Debug($"[ZDO-SCAN] unavailable (ZDOMan null: {man == null}, " +
+                                     $"FindSectorObjects null: {ZdoManFindSectorObjectsMethod == null}) — " +
+                                     "spread falls back to instance candidates only.");
+                }
+                return;
+            }
+
+            Dictionary<int, bool> kinds = EnsureBurnablePrefabKinds();
+            if (kinds == null || kinds.Count == 0) return;
+
+            _zdoScanScratch.Clear();
+            int rings = Mathf.Max(1, Mathf.CeilToInt(radius / 64f));
+            try
+            {
+                ZdoManFindSectorObjectsMethod.Invoke(man,
+                    new object[] { ZoneSystem.GetZone(center), rings, 0, _zdoScanScratch, null });
+            }
+            catch (System.Exception ex)
+            {
+                if (!_zdoScanFailureLogged)
+                {
+                    _zdoScanFailureLogged = true;
+                    FireLogger.Debug($"[ZDO-SCAN] FindSectorObjects threw: {ex.InnerException?.Message ?? ex.Message}");
+                }
+                return;
+            }
+
+            float radiusSqr = radius * radius;
+            for (int i = 0; i < _zdoScanScratch.Count; i++)
+            {
+                ZDO zdo = _zdoScanScratch[i];
+                if (zdo == null) continue;
+                if (!kinds.TryGetValue(zdo.GetPrefab(), out bool isTreeOrLog)) continue;
+                if (isTreeOrLog && !includeTreesAndLogs) continue;
+
+                Vector3 pos = zdo.GetPosition();
+                if ((pos - center).sqrMagnitude > radiusSqr) continue;
+                into.Add(new ZdoBurnable { Id = zdo.m_uid, Position = pos });
+            }
+        }
+
         /// <summary>
         /// True if the ZDO (network data) still exists for this ZDOID — the
         /// key distinction between "really destroyed" (chopped down, burned by
