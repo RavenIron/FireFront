@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.18.0
+
+- **Fires survive server restarts.** Burning objects and ground fire come back with
+  their remaining burn time, spent fuel stays spent, the fire keeps its origin,
+  ramp age, and arsonist, and trees waiting to regrow still regrow. Stored in a
+  small sidecar file next to the world save, written every 60s and on shutdown —
+  a hard kill loses at most the last minute of fire drift. Toggle with `fireset
+  persistfires`.
+
+## 0.17.6
+
+- Fixed a `FieldAccessException` spamming the main menu from 0.17.5's item
+  registration (a private-in-the-real-assembly ObjectDB field). Registration
+  failures now degrade to "item missing" with one warning, never menu errors.
+
+## 0.17.5
+
+- **New item: the Dousing Bomb.** A throwable that extinguishes everything within
+  ~6m of impact — ground fire and burning structures/trees alike. Hand-craftable:
+  3 Resin + 2 Leather scraps makes 3. Tune the blast with `fireset dousingradius`.
+- The extinguish key's radius now also clears burning objects around you, not just
+  ground fire.
+
+## 0.17.4
+
+- **Forest spread now actually works on dedicated servers.** Object-to-object and
+  ground-to-object spread had never worked there — the headless server tracks the
+  world as ZDOs and never instantiates the GameObjects the old candidate scan
+  looked for, so the server literally could not see trees. Spread candidates now
+  come from the ZDO layer, and an instance is created only for objects that
+  actually catch fire.
+
 ## 0.17.3
 
 - **Fires remember who lit them.** The spreading front carries its igniter's player
