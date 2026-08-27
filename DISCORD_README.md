@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.17.3**
+🔥 **FireFront — Tester Build v0.17.4**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -11,6 +11,7 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 **What it does**
 • Structures, standing trees, and felled logs can all catch fire and burn down for real — with real drops (trees fell via vanilla's own felling and leave logs, logs leave wood)
 • Fire spreads to nearby burnable stuff, structure-to-structure, tree-to-tree, or structure-to-tree
+• **Big fix in 0.17.4: forest spread now actually works on dedicated servers.** It turns out tree-to-tree and ground-to-tree spread had *never* worked on a dedicated server (fine in single-player) — the server literally couldn't see trees. If you tested on a server before and thought fire seemed weirdly tame, that was this. Burn a forest and see the difference.
 • Fire also spreads across open ground/grass between things too far apart to ignite each other directly — you can *see* it crawling through grass as small ember flickers
 • Standing in fire hurts, players and mobs alike — same mechanism vanilla campfires use
 • **New: fire follows the wind.** The front stretches downwind and thins out upwind, using the game's real wind — and how *hard* it's blowing matters now too. A gale drives a long narrow tongue of fire; a calm day burns in a lazy, even circle. Watch a fire when the weather turns.
