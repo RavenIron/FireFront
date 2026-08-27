@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.1
+
+- **Fixed: fire went invisible for a client that reconnected without relaunching.**
+  Valheim creates a fresh routing instance per connection; FireFront registered its
+  network handlers once per process, so a client kicked by a server restart that
+  auto-rejoined got none of the fire broadcasts — the fire burned, invisibly, until
+  the game was fully relaunched. Handlers now re-register whenever the routing
+  instance changes. Receipt-side `[SYNC-DIAG]` debug traces are kept so this class
+  of silent drop is diagnosable from a single log in future.
+
 ## 0.18.0
 
 - **Fires survive server restarts.** Burning objects and ground fire come back with

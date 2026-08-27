@@ -88,7 +88,16 @@ namespace FireFront.Fire
         // client watching someone else's fire can't accidentally deal damage
         // from a copy that only exists locally on their own machine.
         private readonly Dictionary<Component, GameObject> _remoteVfx = new Dictionary<Component, GameObject>();
-        private bool _fireRpcsRegistered;
+        // The ZRoutedRpc INSTANCE the handlers are registered on — not a bool.
+        // Valheim creates a fresh ZRoutedRpc per connection, so a client that
+        // gets kicked (server restart) and auto-reconnects IN THE SAME PROCESS
+        // gets a new instance whose m_functions has no FireFront handlers; the
+        // old one-shot bool never re-registered, and every server broadcast
+        // was then dropped silently at the hash lookup — fire burned invisibly
+        // until the next full client relaunch. Found live 2026-08-27 with the
+        // [SYNC-DIAG] instrumentation: send side flawless (peer listed, ready),
+        // receipts zero, then everything worked after a fresh launch.
+        private ZRoutedRpc _registeredRpcInstance;
 
         // Ground-fire sync: server-side accumulation of cells that started/
         // stopped burning since the last batched flush (see FlushGroundFireSync),
@@ -279,9 +288,10 @@ namespace FireFront.Fire
 
         private void Update()
         {
-            if (!_fireRpcsRegistered && ZRoutedRpc.instance != null)
+            ZRoutedRpc routedRpc = ZRoutedRpc.instance;
+            if (routedRpc != null && !ReferenceEquals(routedRpc, _registeredRpcInstance))
             {
-                _fireRpcsRegistered = true;
+                _registeredRpcInstance = routedRpc; // guarded by reference, so a reconnect's fresh instance re-registers
                 ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest);
             }
 
@@ -1356,6 +1366,8 @@ namespace FireFront.Fire
         /// </summary>
         private void HandleFireEventBroadcast(long sender, ZDOID id, bool started)
         {
+            // Receipt trace — kept permanently, see HandleGroundFireSync.
+            FireLogger.Debug($"[SYNC-DIAG] FireEvent arrived from {sender} (id={id}, started={started}, IsServer={ValheimBridge.IsServer()}).");
             if (ValheimBridge.IsServer()) return;
 
             Component target = ValheimBridge.ComponentFromZdoid(id);
@@ -1699,6 +1711,11 @@ namespace FireFront.Fire
         /// </summary>
         private void HandleGroundFireSync(long sender, ZPackage pkg)
         {
+            // Receipt trace BEFORE the server no-op return — kept permanently.
+            // The stale-ZRoutedRpc registration bug burned an evening because
+            // "no receipt logged" was indistinguishable from "receipt logged
+            // nowhere": this line makes silent-drop diagnosable from one log.
+            FireLogger.Debug($"[SYNC-DIAG] GroundFireSync arrived from {sender} (IsServer={ValheimBridge.IsServer()}).");
             if (ValheimBridge.IsServer()) return;
 
             int ignitedCount = pkg.ReadInt();
