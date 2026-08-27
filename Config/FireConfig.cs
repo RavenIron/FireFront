@@ -54,6 +54,7 @@ namespace FireFront.Config
         public static ConfigEntry<float> WindUpwindIgniteChance;
         public static ConfigEntry<float> WindInfluence;
         public static ConfigEntry<float> DousingBombRadius;
+        public static ConfigEntry<bool> PersistFiresEnabled;
         public static ConfigEntry<bool> GroundMaxSpreadDistanceEnabled;
         public static ConfigEntry<float> GroundMaxSpreadDistance;
 
@@ -320,9 +321,9 @@ namespace FireFront.Config
                 "Trees", "TreeRegrowthEnabled", true,
                 "If true, a tree that finished burning down respawns as the same species after " +
                 "TreeRegrowthSeconds, provided the spot is still clear. Small-scope by design: no " +
-                "stump placeholder while waiting, and pending regrowth does NOT survive a server " +
-                "restart (in-memory only) — a tree mid-regrow when the server restarts simply " +
-                "won't come back.");
+                "stump placeholder while waiting. Pending regrowth survives a server restart " +
+                "since 0.18.0 via the fire-state sidecar (see PersistFiresEnabled) — before that " +
+                "it was in-memory only and a restart permanently ate any tree mid-regrow.");
 
             TreeRegrowthSeconds = config.Bind(
                 "Trees", "TreeRegrowthSeconds", 900f,
@@ -390,6 +391,16 @@ namespace FireFront.Config
                     "hand-craftable from 3 Resin + 2 Leather scraps) always exists; this only tunes " +
                     "how much fire one throw puts out.",
                     new AcceptableValueRange<float>(1f, 15f)));
+
+            PersistFiresEnabled = config.Bind(
+                "General", "PersistFiresEnabled", true,
+                "Live fire state survives a server restart: burning objects and ground cells (with " +
+                "their remaining burn time), spent-fuel cells, the fire's origin/ramp/igniter, and " +
+                "pending tree regrowth. Stored as a small sidecar file next to the world save " +
+                "(worlds_local), written every 60s and on clearfires/shutdown — a hard kill loses " +
+                "at most the last minute of fire drift. Server-side only, like the simulation " +
+                "itself. Note: for a Steam-Cloud world the sidecar stays on the host machine and " +
+                "does not travel with the save.");
 
             GroundMaxSpreadDistanceEnabled = config.Bind(
                 "Ground", "GroundMaxSpreadDistanceEnabled", true,

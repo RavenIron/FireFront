@@ -27,6 +27,9 @@ is on fire," an actual moving front.
 - Press **G** to extinguish what you're looking at, plus ground fire around you
 - Fires **remember who lit them** — the whole spreading front carries its arsonist,
   even fire that crawled far from the first spark; natural fire belongs to nobody
+- Fires **survive a server restart** — burning objects and ground fire come back with
+  their remaining burn time, spent fuel stays spent, and trees waiting to regrow
+  still regrow
 - Everything is config-tunable, and adjustable live from the console — no restart
 
 ## Install
@@ -61,7 +64,7 @@ pair fails safe (ignition quietly no-ops) rather than desyncing.
 
 - The fire visual is homemade (procedural), not a vanilla asset — it looks like fire,
   just not *exactly* like Valheim's own
-- Tree regrowth is in-memory only — trees mid-regrow when the server restarts won't
-  come back
 - Defaults are tuned lively; `fireset` them down if the fire is too hungry for your
   server
+- For a Steam-Cloud world, the fire-state sidecar stays on the host machine and does
+  not travel with the save (cloud saves have no filesystem path to sit next to)

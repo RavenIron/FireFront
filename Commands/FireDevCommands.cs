@@ -47,7 +47,7 @@ namespace FireFront.Commands
                 args => FireDebug(args));
 
             new Terminal.ConsoleCommand("fireset",
-                "FireFront: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>",
+                "FireFront: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>",
                 args => FireSet(args));
 
             new Terminal.ConsoleCommand("firelistprefabs",
@@ -226,7 +226,7 @@ namespace FireFront.Commands
         {
             if (args.Length < 3)
             {
-                Say(args, "Usage: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>");
+                Say(args, "Usage: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>");
                 return;
             }
 
@@ -381,6 +381,10 @@ namespace FireFront.Commands
                     break;
                 case "dousingradius":
                     if (float.TryParse(raw, out float dbr)) { FireConfig.DousingBombRadius.Value = dbr; Ok(args, key, FireConfig.DousingBombRadius.Value); }
+                    else Bad(args, raw);
+                    break;
+                case "persistfires":
+                    if (bool.TryParse(raw, out bool pf)) { FireConfig.PersistFiresEnabled.Value = pf; Ok(args, key, pf); }
                     else Bad(args, raw);
                     break;
                 case "firebreaks":

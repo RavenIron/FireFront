@@ -302,10 +302,20 @@ namespace FireFront.Fire
             // on that accident.
             if (!ValheimBridge.IsServer()) return;
 
+            // Restore persisted fire state exactly once, before the first cycle
+            // ever runs — and gate all SAVES behind this flag too, or the empty
+            // pre-restore state would clobber the store at every boot.
+            if (!_persistenceRestored && ZNet.instance != null && ZDOMan.instance != null)
+            {
+                _persistenceRestored = true;
+                if (FireConfig.PersistFiresEnabled.Value) RestorePersistedFires();
+            }
+
             if (!FireConfig.Enabled.Value) return;
             if (Time.time < _nextCycle) return;
             _nextCycle = Time.time + FireConfig.SpreadCheckInterval.Value;
 
+            MaybePersistFires();
             PruneStale();
             ExpireTimers();
             PromoteFromQueue();
@@ -319,7 +329,7 @@ namespace FireFront.Fire
 
             if (_burning.Count == 0 && _groundBurning.Count == 0)
             {
-                _fireStartTime = -1f; // fully out — next ignition ramps up fresh
+                _fireStartTime = -1f; _restoredRampAge = 0f; // fully out — next ignition ramps up fresh
                 _fireOrigin = null;
                 _fireIgniterPlayerId = 0L; // the event's culprit goes out with its fires
                 _nextSpreadDiagnosticLog = 0f; // next fire reports its candidate counts on its first cycle
@@ -334,12 +344,20 @@ namespace FireFront.Fire
         /// FireRampStartFraction and climbs linearly to 1.0 over
         /// FireRampDurationSeconds. Returns 1.0 outright if ramping is disabled.
         /// </summary>
+        // Ramp age carried over from a restored fire. Needed because
+        // _fireStartTime doubles as a "no fire" sentinel (-1): restoring a
+        // 120s-old fire onto a 20s-old server would set it to -100, which the
+        // sentinel check silently read as "no fire" and reset the ramp to its
+        // start fraction (found live in the first 0.18.0 restore test). Reset
+        // wherever _fireStartTime resets.
+        private float _restoredRampAge;
+
         private float GetRampFraction()
         {
             if (!FireConfig.FireRampEnabled.Value) return 1f;
             if (_fireStartTime < 0f) return FireConfig.FireRampStartFraction.Value;
 
-            float elapsed = Time.time - _fireStartTime;
+            float elapsed = (Time.time - _fireStartTime) + _restoredRampAge;
             float t = Mathf.Clamp01(elapsed / FireConfig.FireRampDurationSeconds.Value);
             return Mathf.Lerp(FireConfig.FireRampStartFraction.Value, 1f, t);
         }
@@ -573,9 +591,199 @@ namespace FireFront.Fire
             _groundExhausted.Clear();
             _pendingRegrowth.Clear();
             _fireStartTime = -1f;
+            _restoredRampAge = 0f;
             _fireOrigin = null;
             _nextSpreadDiagnosticLog = 0f;
             FireLogger.Info($"Cleared all fires ({n} entries).");
+
+            // A deliberate clear must stick even through a hard kill right
+            // after — otherwise the next boot resurrects the fire someone
+            // explicitly put out.
+            PersistFiresNow();
+        }
+
+        // ---------------------------------------------------------------
+        // Persistence — fires, spent fuel, and pending regrowth survive a
+        // server restart. Times are stored as REMAINING seconds because
+        // Time.time restarts with the process. Server-only, like the rest
+        // of the simulation. File IO lives in FirePersistence.
+        // ---------------------------------------------------------------
+
+        private bool _persistenceRestored;
+        private float _nextPersistSave;
+        private const float PersistSaveInterval = 60f;
+
+        private void MaybePersistFires()
+        {
+            if (!FireConfig.PersistFiresEnabled.Value) return;
+            if (Time.time < _nextPersistSave) return;
+            _nextPersistSave = Time.time + PersistSaveInterval;
+            PersistFiresNow();
+        }
+
+        private void PersistFiresNow()
+        {
+            if (!_persistenceRestored) return; // never clobber the store before restoring it
+            if (!FireConfig.PersistFiresEnabled.Value) return;
+            if (!ValheimBridge.IsServer()) return;
+
+            float now = Time.time;
+            var sb = new System.Text.StringBuilder(256);
+            sb.Append("version\t").Append(FirePersistence.FormatVersion).Append('\n');
+
+            if (_fireStartTime >= 0f && _fireOrigin.HasValue)
+            {
+                Vector3 o = _fireOrigin.Value;
+                sb.Append("meta\t").Append((now - _fireStartTime) + _restoredRampAge).Append('\t')
+                  .Append(o.x).Append('\t').Append(o.y).Append('\t').Append(o.z).Append('\t')
+                  .Append(_fireIgniterPlayerId).Append('\n');
+            }
+
+            foreach (KeyValuePair<ZDOID, BurningState> kv in _burning)
+            {
+                sb.Append("obj\t").Append(kv.Key.UserID).Append('\t').Append(kv.Key.ID).Append('\t')
+                  .Append(kv.Value.Position.x).Append('\t').Append(kv.Value.Position.y).Append('\t').Append(kv.Value.Position.z).Append('\t')
+                  .Append(kv.Value.ExpireAt - now).Append('\n');
+            }
+            foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
+            {
+                sb.Append("ground\t").Append(kv.Key.X).Append('\t').Append(kv.Key.Z).Append('\t')
+                  .Append(kv.Value.Y).Append('\t').Append(kv.Value.ExpireAt - now).Append('\n');
+            }
+            foreach (KeyValuePair<GroundCellKey, float> kv in _groundExhausted)
+            {
+                sb.Append("spent\t").Append(kv.Key.X).Append('\t').Append(kv.Key.Z).Append('\t')
+                  .Append(kv.Value - now).Append('\n');
+            }
+            foreach (PendingRegrowth entry in _pendingRegrowth)
+            {
+                sb.Append("regrow\t").Append(entry.Position.x).Append('\t').Append(entry.Position.y).Append('\t')
+                  .Append(entry.Position.z).Append('\t').Append(entry.RegrowAt - now).Append('\t')
+                  .Append(entry.Attempts).Append('\t').Append(entry.PrefabName).Append('\n');
+            }
+
+            FirePersistence.Write(sb.ToString());
+        }
+
+        /// <summary>
+        /// Rebuilds live state from the store. Order matters: meta first (so
+        /// TryIgnite sees an existing fire event and neither restarts the ramp
+        /// clock nor re-attributes the igniter), then pure-data ground state
+        /// (direct dictionary writes — never through TryIgniteGroundCell, whose
+        /// live gates like rain or the leash could veto cells that were
+        /// legitimately burning at shutdown), then burning objects THROUGH
+        /// TryIgnite (so VFX, damage zones, and the client broadcast all
+        /// happen) with the stored remaining time patched in after, then
+        /// pending regrowth.
+        /// </summary>
+        private void RestorePersistedFires()
+        {
+            string[] lines = FirePersistence.ReadLines();
+            if (lines == null || lines.Length == 0) return;
+
+            float now = Time.time;
+            int objects = 0, ground = 0, spent = 0, regrow = 0, skipped = 0;
+
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrEmpty(line) || line[0] == '#') continue;
+                string[] f = line.Split('\t');
+                try
+                {
+                    switch (f[0])
+                    {
+                        case "version":
+                            if (int.Parse(f[1]) != FirePersistence.FormatVersion)
+                            {
+                                FireLogger.Warn($"[PERSIST] store version {f[1]} != {FirePersistence.FormatVersion} — ignoring the store.");
+                                return;
+                            }
+                            break;
+
+                        case "meta":
+                            // The stored age lives in _restoredRampAge, NOT in a
+                            // back-dated _fireStartTime: a fire older than the
+                            // server's uptime would back-date below 0 and collide
+                            // with the -1 "no fire" sentinel.
+                            _fireStartTime = now;
+                            _restoredRampAge = float.Parse(f[1]);
+                            _fireOrigin = new Vector3(float.Parse(f[2]), float.Parse(f[3]), float.Parse(f[4]));
+                            _fireIgniterPlayerId = long.Parse(f[5]);
+                            break;
+
+                        case "ground":
+                        {
+                            float remaining = float.Parse(f[4]);
+                            if (remaining <= 0f) { skipped++; break; }
+                            var key = new GroundCellKey(int.Parse(f[1]), int.Parse(f[2]));
+                            float y = float.Parse(f[3]);
+                            _groundBurning[key] = new GroundCellState { ExpireAt = now + remaining, Y = y };
+                            _groundIgnitedSinceFlush.Add((key, y)); // clients learn of it at the next flush
+                            ground++;
+                            break;
+                        }
+
+                        case "spent":
+                        {
+                            float remaining = float.Parse(f[3]);
+                            if (remaining <= 0f) { skipped++; break; }
+                            _groundExhausted[new GroundCellKey(int.Parse(f[1]), int.Parse(f[2]))] = now + remaining;
+                            spent++;
+                            break;
+                        }
+
+                        case "obj":
+                        {
+                            float remaining = float.Parse(f[6]);
+                            if (remaining <= 0f) { skipped++; break; }
+                            var id = new ZDOID(long.Parse(f[1]), uint.Parse(f[2]));
+                            if (!ValheimBridge.ZdoExists(id)) { skipped++; break; } // chopped offline, world-edited away, etc.
+
+                            Component target = ValheimBridge.ComponentFromZdoid(id);
+                            if (target == null) { skipped++; break; }
+
+                            TryIgnite(target);
+                            if (_burning.TryGetValue(id, out BurningState st))
+                            {
+                                st.ExpireAt = now + remaining;
+                                _burning[id] = st;
+                                objects++;
+                            }
+                            else skipped++; // caps full — the queue may still hold it, fine
+                            break;
+                        }
+
+                        case "regrow":
+                        {
+                            _pendingRegrowth.Add(new PendingRegrowth
+                            {
+                                Position = new Vector3(float.Parse(f[1]), float.Parse(f[2]), float.Parse(f[3])),
+                                RegrowAt = now + Mathf.Max(1f, float.Parse(f[4])),
+                                Attempts = int.Parse(f[5]),
+                                PrefabName = f[6],
+                            });
+                            regrow++;
+                            break;
+                        }
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    skipped++;
+                    FireLogger.Debug($"[PERSIST] unreadable line skipped ('{line}'): {ex.Message}");
+                }
+            }
+
+            if (objects + ground + spent + regrow > 0)
+                FireLogger.Info($"[PERSIST] restored {objects} burning object(s), {ground} ground cell(s), " +
+                                $"{spent} spent cell(s), {regrow} pending regrowth — {skipped} entries skipped/expired.");
+        }
+
+        private void OnDestroy()
+        {
+            // Last-chance flush on a graceful shutdown; a hard kill loses at
+            // most PersistSaveInterval seconds of fire drift.
+            PersistFiresNow();
         }
 
         /// <summary>Called by the OnDestroy patch (pieces only) when removed by any means.</summary>
@@ -638,6 +846,7 @@ namespace FireFront.Fire
                    $"wind {FireConfig.WindSpreadBiasEnabled.Value} (upwindchance {FireConfig.WindUpwindIgniteChance.Value:F2}, " +
                    $"influence {FireConfig.WindInfluence.Value:F2}, live intensity {WindIntensityForStatus()}), " +
                    $"dousingradius {FireConfig.DousingBombRadius.Value}m, " +
+                   $"persist {FireConfig.PersistFiresEnabled.Value}, " +
                    $"groundleash {FireConfig.GroundMaxSpreadDistanceEnabled.Value} ({FireConfig.GroundMaxSpreadDistance.Value}m), " +
                    $"ramp {(GetRampFraction() * 100f):F0}% (enabled {FireConfig.FireRampEnabled.Value}, start {(FireConfig.FireRampStartFraction.Value * 100f):F0}%, duration {FireConfig.FireRampDurationSeconds.Value}s), " +
                    $"enabled {FireConfig.Enabled.Value}";

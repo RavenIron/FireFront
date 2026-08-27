@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.17.5**
+🔥 **FireFront — Tester Build v0.18.0**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -24,13 +24,13 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • Press **G** to extinguish what you're looking at plus all fire around you — ground fire *and* burning structures/trees
 • **New in 0.17.5: the Dousing Bomb.** A throwable that puts fire OUT — everything within ~6m of where it lands, grass fire and burning buildings/trees alike. Hand-craftable anywhere, cheap on purpose: 3 Resin + 2 Leather scraps makes 3 bombs. (It borrows the ooze bomb's look for now — yes, the fire extinguisher is green. Art later, function first.) Fight a fire for real instead of just G-spamming next to it.
 • Fires now remember who lit them — the whole spreading front carries its arsonist, even fire that crawled a long way from the first spark (natural/creature fire belongs to nobody). Nothing visible in-game yet; it feeds a companion mod's reputation system
+• **New in 0.18.0: fires survive server restarts.** Burning stuff comes back burning with its remaining time, burned-out ground stays spent, and trees waiting to regrow still regrow — a reboot no longer resets the world's fire state
 • Everything's config-tunable and adjustable live via console — no restart needed
 
 **Heads-up if updating from an older build:** update server and client together — a mixed-version pair (0.17.3 with anything older) means clicking `ignite` from a client silently does nothing.
 
 **What to expect / known limits**
 • The fire visual is homemade, not a vanilla asset — it'll look like fire, just not *exactly* like Valheim's own fire
-• Tree regrowth is in-memory only — trees mid-regrow when the server restarts won't come back
 • Default settings are tuned aggressive for testing — expect fire to spread fast and hungrily unless you dial it down yourself
 
 —
@@ -45,7 +45,7 @@ clearfires              — nuke every active fire instantly
 firedebug               — toggle verbose fire logging
 fireset <key> <value>   — live-tune settings, no restart needed
 ```
-Full list of tunable `fireset` keys: `burnduration`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `enabled`
+Full list of tunable `fireset` keys: `burnduration`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `dousingradius`, `persistfires`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `enabled`
 
 Wind ones worth playing with: `fireset windinfluence 0` ignores wind entirely (old-style even spread), `1` is full effect (the default). `firestatus` shows the live wind strength the fire is currently feeling.
 
