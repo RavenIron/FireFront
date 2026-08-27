@@ -18,7 +18,7 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • Fires start small and ramp up over ~10 minutes instead of instantly raging
 • Rain douses grass fire (an already-burning building keeps going)
 • Burned ground is spent — it can't relight for ~90s, so the front *advances* instead of churning in place, and it leaves burn scars behind
-• Dirt paths and cultivated ground are real firebreaks; water stops spread too
+• Dirt paths and cultivated ground are real firebreaks; water stops spread too. **This protects your base more than you'd expect**: the leveled/pathed ground most bases sit on counts as fuel-free, so a wildfire will burn right up to the edge of your yard and stall there — your walls only catch if fire starts *inside* the perimeter (or you clear less ground). If it looks like "fire can't touch my buildings," it's actually your groundwork doing its job — keep a tended break around your base and it genuinely works, exactly like real firefighting
 • Ground fire won't wander more than ~40m from where the fire started
 • Burned trees regrow after ~15 minutes if the spot's still clear
 • Press **G** to extinguish what you're looking at plus all fire around you — ground fire *and* burning structures/trees
