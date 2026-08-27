@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.4
+
+- **Dousing now holds — firefighting is winnable.** Anything deliberately
+  extinguished (dousing bomb, extinguish key, stopfire) is soaked for
+  `DouseImmunitySeconds` (default 90s, `fireset douseimmunity`) and can't
+  re-ignite. Before this, the surrounding fire re-lit every doused cell and
+  object within a cycle or two, so a bomb's cleared hole refilled itself in
+  seconds and a ramped fire was hopeless to fight ("the ramp is too aggressive
+  to fight" — the ramp was fine; the dousing just didn't stick). Now a line of
+  bombs cuts a genuine firebreak ahead of the front. 0 disables.
+
 ## 0.18.3
 
 - **`fireset` now applies on the server no matter where you type it.** Console

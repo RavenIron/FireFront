@@ -36,6 +36,7 @@ namespace FireFront.Config
         public static ConfigEntry<float> FireDamageTickInterval;
         public static ConfigEntry<KeyboardShortcut> ExtinguishKey;
         public static ConfigEntry<float> ExtinguishGroundRadius;
+        public static ConfigEntry<float> DouseImmunitySeconds;
         public static ConfigEntry<bool> RainSuppressesGroundFire;
         public static ConfigEntry<float> RainGroundBurnDurationMultiplier;
         public static ConfigEntry<bool> ScorchMarksEnabled;
@@ -244,6 +245,17 @@ namespace FireFront.Config
                 new ConfigDescription(
                     "Radius (meters) around the player that ExtinguishKey clears of ground fire.",
                     new AcceptableValueRange<float>(1f, 15f)));
+
+            DouseImmunitySeconds = config.Bind(
+                "Controls", "DouseImmunitySeconds", 90f,
+                new ConfigDescription(
+                    "Anything deliberately extinguished — dousing bomb, extinguish key, stopfire — " +
+                    "is soaked and can't re-ignite for this many seconds. Without this, the " +
+                    "surrounding fire simply re-lit every doused cell and object within a cycle " +
+                    "or two, so fighting a ramped fire was hopeless: a bomb's cleared hole " +
+                    "refilled itself in seconds. With it, dousing genuinely carves firebreaks — " +
+                    "clear a line ahead of the front and hold it. 0 disables (old behavior).",
+                    new AcceptableValueRange<float>(0f, 600f)));
 
             RainSuppressesGroundFire = config.Bind(
                 "Weather", "RainSuppressesGroundFire", true,

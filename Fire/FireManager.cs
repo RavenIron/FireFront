@@ -72,6 +72,12 @@ namespace FireFront.Fire
 
         private readonly Dictionary<ZDOID, BurningState> _burning = new Dictionary<ZDOID, BurningState>();
 
+        // Objects that were deliberately extinguished (bomb, G key, stopfire)
+        // and can't re-ignite until the value — same "soaked" logic as doused
+        // ground cells in ExtinguishGroundNear. Pruned each cycle; in-memory
+        // only (a restart forgetting a minute of wetness is acceptable).
+        private readonly Dictionary<ZDOID, float> _dousedUntil = new Dictionary<ZDOID, float>();
+
         // ZDOID-keyed, same reasoning as _burning: if a later re-resolution
         // returns a DIFFERENT Component reference for the same fire (the
         // server tore down and recreated the object), a Component-keyed
@@ -469,11 +475,13 @@ namespace FireFront.Fire
             {
                 if ((kv.Value.Position - origin).sqrMagnitude <= radiusSqr) _scratch.Add(kv.Key);
             }
+            float wetUntil = Time.time + FireConfig.DouseImmunitySeconds.Value;
             foreach (ZDOID id in _scratch)
             {
                 _burning.Remove(id);
                 _queue.Remove(id);
                 RemoveVfxFor(id);
+                if (FireConfig.DouseImmunitySeconds.Value > 0f) _dousedUntil[id] = wetUntil;
             }
             if (_scratch.Count > 0)
                 FireLogger.Debug($"Extinguished {_scratch.Count} burning object(s) within {radius:F1}m.");
@@ -495,6 +503,7 @@ namespace FireFront.Fire
                 }
             }
 
+            float dousedUntil = Time.time + FireConfig.DouseImmunitySeconds.Value;
             foreach (GroundCellKey key in _groundScratch)
             {
                 float y = _groundBurning[key].Y;
@@ -502,6 +511,16 @@ namespace FireFront.Fire
                 RemoveGroundVfxFor(key);
                 LeaveScorchMark(key, y);
                 _groundExpiredSinceFlush.Add(key);
+
+                // Doused ground is soaked, not just dark: without this the
+                // surrounding fire re-ignited every extinguished cell within a
+                // cycle or two, so a dousing bomb's hole refilled itself in
+                // seconds and firefighting a ramped fire was Sisyphean (live
+                // report: "the ramp is too aggressive to fight" — the ramp was
+                // fine, the dousing just didn't hold). Reuses the exhaustion
+                // dictionary; TryIgniteGroundCell already refuses these cells.
+                if (FireConfig.DouseImmunitySeconds.Value > 0f)
+                    _groundExhausted[key] = dousedUntil;
             }
 
             return _groundScratch.Count;
@@ -551,6 +570,7 @@ namespace FireFront.Fire
 
             if (_burning.ContainsKey(id)) return;
             if (_queue.Contains(id)) return;
+            if (_dousedUntil.TryGetValue(id, out float wetUntil) && Time.time < wetUntil) return; // soaked — see _dousedUntil
 
             int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.MaxConcurrentBurning.Value * GetRampFraction()));
 
@@ -588,6 +608,8 @@ namespace FireFront.Fire
                 FireLogger.Debug($"Extinguished: {ValheimBridge.NameOf(target)}");
             _queue.Remove(id.Value);
             RemoveVfxFor(id.Value);
+            if (FireConfig.DouseImmunitySeconds.Value > 0f)
+                _dousedUntil[id.Value] = Time.time + FireConfig.DouseImmunitySeconds.Value;
         }
 
         public void ClearAll()
@@ -606,6 +628,7 @@ namespace FireFront.Fire
             _groundBurning.Clear();
             _groundVfx.Clear();
             _groundExhausted.Clear();
+            _dousedUntil.Clear();
             _pendingRegrowth.Clear();
             _fireStartTime = -1f;
             _restoredRampAge = 0f;
@@ -864,6 +887,7 @@ namespace FireFront.Fire
                    $"wind {FireConfig.WindSpreadBiasEnabled.Value} (upwindchance {FireConfig.WindUpwindIgniteChance.Value:F2}, " +
                    $"influence {FireConfig.WindInfluence.Value:F2}, live intensity {WindIntensityForStatus()}), " +
                    $"dousingradius {FireConfig.DousingBombRadius.Value}m, " +
+                   $"douseimmunity {FireConfig.DouseImmunitySeconds.Value}s (wet {_dousedUntil.Count}), " +
                    $"persist {FireConfig.PersistFiresEnabled.Value}, " +
                    $"groundleash {FireConfig.GroundMaxSpreadDistanceEnabled.Value} ({FireConfig.GroundMaxSpreadDistance.Value}m), " +
                    $"ramp {(GetRampFraction() * 100f):F0}% (enabled {FireConfig.FireRampEnabled.Value}, start {(FireConfig.FireRampStartFraction.Value * 100f):F0}%, duration {FireConfig.FireRampDurationSeconds.Value}s), " +
@@ -1070,7 +1094,10 @@ namespace FireFront.Fire
         private void TryIgniteGroundCell(GroundCellKey key, float y)
         {
             if (_groundBurning.ContainsKey(key)) return;
-            if (FireConfig.GroundFuelExhaustionEnabled.Value &&
+            // The exhausted dict holds burnout regrow timers AND douse immunity
+            // (see ExtinguishGroundNear), so it must stay consultable when
+            // either feature is on — not only fuel exhaustion.
+            if ((FireConfig.GroundFuelExhaustionEnabled.Value || FireConfig.DouseImmunitySeconds.Value > 0f) &&
                 _groundExhausted.TryGetValue(key, out float exhaustedUntil) && Time.time < exhaustedUntil) return;
 
             Vector3 approxCenter = CellCenter(key, y);
@@ -1561,7 +1588,7 @@ namespace FireFront.Fire
             // a long player-sustained fire (one that never fully dies) would keep
             // _groundExhausted growing for the entire session with no eviction —
             // this is what caused the runaway entry count.
-            if (FireConfig.GroundFuelExhaustionEnabled.Value && _groundExhausted.Count > 0)
+            if ((FireConfig.GroundFuelExhaustionEnabled.Value || FireConfig.DouseImmunitySeconds.Value > 0f) && _groundExhausted.Count > 0)
             {
                 _exhaustedScratch.Clear();
                 foreach (KeyValuePair<GroundCellKey, float> kv in _groundExhausted)
@@ -1572,6 +1599,17 @@ namespace FireFront.Fire
                 {
                     _groundExhausted.Remove(key);
                 }
+            }
+
+            // Same sweep for doused-object immunity — small dict, same cadence.
+            if (_dousedUntil.Count > 0)
+            {
+                _scratch.Clear();
+                foreach (KeyValuePair<ZDOID, float> kv in _dousedUntil)
+                {
+                    if (now >= kv.Value) _scratch.Add(kv.Key);
+                }
+                foreach (ZDOID id in _scratch) _dousedUntil.Remove(id);
             }
         }
 

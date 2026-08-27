@@ -47,7 +47,7 @@ namespace FireFront.Commands
                 args => FireDebug(args));
 
             new Terminal.ConsoleCommand("fireset",
-                "FireFront: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>",
+                "FireFront: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>",
                 args => FireSet(args));
 
             new Terminal.ConsoleCommand("firelistprefabs",
@@ -226,7 +226,7 @@ namespace FireFront.Commands
         {
             if (args.Length < 3)
             {
-                Say(args, "Usage: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>");
+                Say(args, "Usage: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>");
                 return;
             }
 
@@ -389,6 +389,10 @@ namespace FireFront.Commands
                     break;
                 case "burnbuildings":
                     if (bool.TryParse(raw, out bool bb)) { FireConfig.BurnPlayerBuildings.Value = bb; Ok(args, key, bb); }
+                    else Bad(args, raw);
+                    break;
+                case "douseimmunity":
+                    if (float.TryParse(raw, out float di)) { FireConfig.DouseImmunitySeconds.Value = di; Ok(args, key, FireConfig.DouseImmunitySeconds.Value); }
                     else Bad(args, raw);
                     break;
                 case "firebreaks":
@@ -592,6 +596,7 @@ namespace FireFront.Commands
                 { "firedamage", FireConfig.FireDamagePerTick },
                 { "firetickinterval", FireConfig.FireDamageTickInterval },
                 { "extinguishradius", FireConfig.ExtinguishGroundRadius },
+                { "douseimmunity", FireConfig.DouseImmunitySeconds },
                 { "rainsuppress", FireConfig.RainSuppressesGroundFire },
                 { "rainmultiplier", FireConfig.RainGroundBurnDurationMultiplier },
                 { "scorchmarks", FireConfig.ScorchMarksEnabled },
