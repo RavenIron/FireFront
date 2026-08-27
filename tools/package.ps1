@@ -38,16 +38,31 @@ $stage = "$dist\stage"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-Copy-Item $dll, "$root\manifest.json", "$root\README.md", "$root\CHANGELOG.md", "$root\icon.png" -Destination $stage
+# Store files at the zip root; the DLL under plugins\ — the BepInEx layout mod
+# managers map onto BepInEx/plugins (and Hexium requires; a root-level DLL was
+# refused 2026-08-27).
+Copy-Item "$root\manifest.json", "$root\README.md", "$root\CHANGELOG.md", "$root\icon.png" -Destination $stage
+New-Item -ItemType Directory -Force -Path "$stage\plugins" | Out-Null
+Copy-Item $dll -Destination "$stage\plugins"
 
 $zip = "$dist\RavenIron-FireFront-$pluginVer.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
-# .NET's writer, NOT Compress-Archive: PS 5.1's cmdlet produces structurally quirky
-# zips that at least one store's web-side parser rejects with "No manifest.json found
-# in the ZIP" (observed on Hexium 2026-08-27, entries verifiably present and correct).
+# Entries are written by hand for two reasons learned on upload day (2026-08-27):
+# PS 5.1's Compress-Archive produces structurally quirky zips Hexium rejects outright,
+# and .NET Framework's CreateFromDirectory names nested entries with BACKSLASHES
+# (spec says forward slashes), which a strict parser reads as a weird root filename
+# instead of a plugins/ folder. Explicit CreateEntry with '/' sidesteps both.
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip,
-    [System.IO.Compression.CompressionLevel]::Optimal, $false)
+$archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    Get-ChildItem $stage -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($stage.Length + 1).Replace('\', '/')
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $archive, $_.FullName, $rel,
+            [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+} finally { $archive.Dispose() }
 Remove-Item $stage -Recurse -Force
 
 Write-Host "Packaged: $zip" -ForegroundColor Green
