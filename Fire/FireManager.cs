@@ -679,6 +679,16 @@ namespace FireFront.Fire
         /// and by the firegroundignite dev command for direct testing.
         /// NOT used for ground-to-ground propagation — see
         /// IgniteAdjacentGroundCells for why.
+        ///
+        /// PUBLIC CROSS-MOD CONTRACT (promoted 2026-08-27): Ragnarok's Wrath
+        /// resolves this method by reflection as its storm-lightning igniter —
+        /// the bridge's one WRITE, beside the two read surfaces above. Renaming
+        /// or re-signing it silently disarms lightning over there (RW logs the
+        /// absence once and goes dormant); same rules as
+        /// CollectActiveFirePositions. Called standalone it starts a fresh fire
+        /// event: TryIgniteGroundCell seeds _fireOrigin from the first cell and
+        /// captures no igniter, so lightning fires are natural — attributed to
+        /// nobody — by construction.
         /// </summary>
         public void IgniteGroundNear(Vector3 origin, float radius)
         {
