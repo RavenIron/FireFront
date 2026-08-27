@@ -844,6 +844,7 @@ namespace FireFront.Fire
                    $"groundradius {FireConfig.GroundSpreadRadius.Value}m, " +
                    $"interval {FireConfig.SpreadCheckInterval.Value}s, " +
                    $"trees {FireConfig.BurnTreesAndLogs.Value}, " +
+                   $"burnbuildings {FireConfig.BurnPlayerBuildings.Value}, " +
                    $"vfx '{FireConfig.VfxPrefabName.Value}', procedural {FireConfig.UseProceduralVfx.Value}, " +
                    $"hurts {FireConfig.FireHurtsEnabled.Value} (playerOnly {FireConfig.FireHurtsPlayerOnly.Value}, {FireConfig.FireDamagePerTick.Value}dmg/{FireConfig.FireDamageTickInterval.Value}s), " +
                    $"dirtpaint {FireConfig.UseVanillaDirtPaint.Value}, " +
@@ -1987,7 +1988,7 @@ namespace FireFront.Fire
                     : 100f;
                 ValheimBridge.CollectBurnableZdosNear(
                     scanCenter.Value, leash + reach + 8f,
-                    FireConfig.BurnTreesAndLogs.Value, _zdoCandidates);
+                    FireConfig.BurnTreesAndLogs.Value, FireConfig.BurnPlayerBuildings.Value, _zdoCandidates);
             }
             else
             {

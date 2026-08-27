@@ -275,14 +275,30 @@ namespace FireFront.Utils
             if (!named.ContainsKey(hash)) named.Add(hash, prefab);
         }
 
+        // Placement stamps the placer's player id into the ZDO under this hash
+        // (verified in the decompiled Piece: m_creator = zdo.GetLong(s_creator),
+        // IsPlacedByPlayer() == creator != 0). Reading it at the ZDO layer means
+        // the player-built check works headless, before any instance exists.
+        private static readonly int CreatorZdoHash = "creator".GetStableHashCode();
+
+        /// <summary>True if this object carries a player's creator stamp — a built piece, not world-generated.</summary>
+        public static bool IsPlayerBuilt(Component target)
+        {
+            ZNetView nv = ZNetViewOf(target);
+            if (nv == null || !nv.IsValid()) return false;
+            return nv.GetZDO().GetLong(CreatorZdoHash, 0L) != 0L;
+        }
+
         /// <summary>
         /// Collect every burnable object the ZDO layer knows about within
         /// radius of center, whether or not a GameObject exists for it on this
         /// peer. Verified against the decompiled DLL: ZDOMan.FindSectorObjects
         /// takes a zone coordinate plus a ring count (zones are 64m square),
         /// and ZoneSystem.GetZone(Vector3) is public static.
+        /// includePlayerBuildings=false drops any piece carrying a creator
+        /// stamp — world-generated WearNTear (ruins, dungeon chests) stays in.
         /// </summary>
-        public static void CollectBurnableZdosNear(Vector3 center, float radius, bool includeTreesAndLogs, List<ZdoBurnable> into)
+        public static void CollectBurnableZdosNear(Vector3 center, float radius, bool includeTreesAndLogs, bool includePlayerBuildings, List<ZdoBurnable> into)
         {
             into.Clear();
 
@@ -326,6 +342,7 @@ namespace FireFront.Utils
                 if (zdo == null) continue;
                 if (!kinds.TryGetValue(zdo.GetPrefab(), out bool isTreeOrLog)) continue;
                 if (isTreeOrLog && !includeTreesAndLogs) continue;
+                if (!isTreeOrLog && !includePlayerBuildings && zdo.GetLong(CreatorZdoHash, 0L) != 0L) continue;
 
                 Vector3 pos = zdo.GetPosition();
                 if ((pos - center).sqrMagnitude > radiusSqr) continue;
@@ -427,6 +444,13 @@ namespace FireFront.Utils
             switch (KindOf(target))
             {
                 case BurnKind.Piece:
+                    // Anti-grief switch: with BurnPlayerBuildings off, anything a
+                    // player placed is fireproof no matter how the ignition tried
+                    // to happen (spread, arrows, console) — this is the single
+                    // gate every path funnels through. World-generated WearNTear
+                    // (ruins, dungeon furniture) carries no creator stamp and
+                    // keeps burning.
+                    if (!FireFront.Config.FireConfig.BurnPlayerBuildings.Value && IsPlayerBuilt(target)) return false;
                     return BurnableField != null && (bool)BurnableField.GetValue(target);
                 case BurnKind.Tree:
                 case BurnKind.Log:

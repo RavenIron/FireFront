@@ -16,6 +16,7 @@ namespace FireFront.Config
         public static ConfigEntry<float> SpreadCheckInterval;
         public static ConfigEntry<bool> VerboseLogging;
         public static ConfigEntry<bool> BurnTreesAndLogs;
+        public static ConfigEntry<bool> BurnPlayerBuildings;
         public static ConfigEntry<string> VfxPrefabName;
         public static ConfigEntry<bool> UseProceduralVfx;
         public static ConfigEntry<bool> FireSmokeEnabled;
@@ -104,6 +105,18 @@ namespace FireFront.Config
             BurnTreesAndLogs = config.Bind(
                 "Fire", "BurnTreesAndLogs", true,
                 "Standing trees and felled logs can catch fire and spread alongside structures.");
+
+            BurnPlayerBuildings = config.Bind(
+                "Fire", "BurnPlayerBuildings", true,
+                "Player-built structures (anything carrying a placement creator stamp — walls, " +
+                "floors, furniture, chests you placed) can catch fire. Set false for an " +
+                "anti-grief server: fire then never ignites player builds by ANY path — spread, " +
+                "fire arrows, console commands — while world-generated structures (abandoned " +
+                "villages, ruins, dungeon furniture) still burn. Wildfire still crawls past a " +
+                "protected base and still hurts anyone standing in it; only the buildings are " +
+                "safe. Note the terrain firebreak already protects a base on leveled/pathed " +
+                "ground from SPREAD — this switch is the stronger guarantee that also covers " +
+                "deliberate arson.");
 
             VfxPrefabName = config.Bind(
                 "Visuals", "VfxPrefabName", "",

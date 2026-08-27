@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.2
+
+- **New config `BurnPlayerBuildings` (default true) + `fireset burnbuildings`.**
+  Set false for an anti-grief server: fire never ignites anything carrying a
+  placement creator stamp — walls, floors, furniture — by any path (spread, fire
+  arrows, console), while world-generated structures still burn. The wildfire
+  still crawls past a protected base and still hurts anyone standing in it. This
+  is the hard guarantee on top of the terrain firebreak, which already stops
+  spread at leveled/pathed base ground but not deliberate arson.
+
 ## 0.18.1
 
 - **Fixed: fire went invisible for a client that reconnected without relaunching.**
