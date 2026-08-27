@@ -42,7 +42,12 @@ Copy-Item $dll, "$root\manifest.json", "$root\README.md", "$root\CHANGELOG.md", 
 
 $zip = "$dist\RavenIron-FireFront-$pluginVer.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path "$stage\*" -DestinationPath $zip
+# .NET's writer, NOT Compress-Archive: PS 5.1's cmdlet produces structurally quirky
+# zips that at least one store's web-side parser rejects with "No manifest.json found
+# in the ZIP" (observed on Hexium 2026-08-27, entries verifiably present and correct).
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip,
+    [System.IO.Compression.CompressionLevel]::Optimal, $false)
 Remove-Item $stage -Recurse -Force
 
 Write-Host "Packaged: $zip" -ForegroundColor Green
