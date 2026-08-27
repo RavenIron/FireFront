@@ -415,6 +415,13 @@ namespace FireFront.Commands
                     Say(args, $"Unknown key: {key}");
                     break;
             }
+
+            // Applied locally above (a few settings ARE read client-side: the
+            // extinguish key radius, the dousing bomb radius) — and forwarded
+            // here so the same command also lands on the server, where the
+            // simulation actually reads it. Cost two real debugging rounds
+            // ('rampstart 1', 'burnbuildings false') before this existed.
+            ForwardToServerIfClient(key, raw);
         }
 
         private static void FireListPrefabs(Terminal.ConsoleEventArgs args)
@@ -546,5 +553,102 @@ namespace FireFront.Commands
 
         private static void Bad(Terminal.ConsoleEventArgs args, string raw) =>
             Say(args, $"Couldn't parse value: {raw}");
+
+        // ---------------------------------------------------------------
+        // Server-forwarded fireset. Console commands run where they're typed,
+        // and every one of these settings only matters where the simulation
+        // runs — the server. This map + BepInEx's own serialized-value parser
+        // let the forwarded (key, raw) land on the server's real ConfigEntries
+        // with the same clamping the console path gets, without duplicating
+        // the 40-case switch.
+        // ---------------------------------------------------------------
+
+        private static System.Collections.Generic.Dictionary<string, BepInEx.Configuration.ConfigEntryBase> _settable;
+
+        private static System.Collections.Generic.Dictionary<string, BepInEx.Configuration.ConfigEntryBase> Settable()
+        {
+            if (_settable != null) return _settable;
+            _settable = new System.Collections.Generic.Dictionary<string, BepInEx.Configuration.ConfigEntryBase>
+            {
+                { "burnduration", FireConfig.BurnDurationSeconds },
+                { "spreadradius", FireConfig.SpreadRadius },
+                { "maxburning", FireConfig.MaxConcurrentBurning },
+                { "queuesize", FireConfig.QueueSize },
+                { "spreadinterval", FireConfig.SpreadCheckInterval },
+                { "trees", FireConfig.BurnTreesAndLogs },
+                { "burnbuildings", FireConfig.BurnPlayerBuildings },
+                { "vfx", FireConfig.VfxPrefabName },
+                { "procedural", FireConfig.UseProceduralVfx },
+                { "groundenabled", FireConfig.GroundSpreadEnabled },
+                { "groundcellsize", FireConfig.GroundCellSize },
+                { "groundradius", FireConfig.GroundSpreadRadius },
+                { "groundburnduration", FireConfig.GroundBurnDurationSeconds },
+                { "groundmax", FireConfig.GroundMaxConcurrent },
+                { "groundvfxmax", FireConfig.GroundVfxMaxConcurrent },
+                { "grounddamagemax", FireConfig.GroundDamageMaxConcurrent },
+                { "firehurts", FireConfig.FireHurtsEnabled },
+                { "firehurtsplayeronly", FireConfig.FireHurtsPlayerOnly },
+                { "firehurtsradius", FireConfig.FireHurtsObjectRadius },
+                { "firedamage", FireConfig.FireDamagePerTick },
+                { "firetickinterval", FireConfig.FireDamageTickInterval },
+                { "extinguishradius", FireConfig.ExtinguishGroundRadius },
+                { "rainsuppress", FireConfig.RainSuppressesGroundFire },
+                { "rainmultiplier", FireConfig.RainGroundBurnDurationMultiplier },
+                { "scorchmarks", FireConfig.ScorchMarksEnabled },
+                { "scorchlifetime", FireConfig.ScorchMarkLifetimeSeconds },
+                { "dirtpaint", FireConfig.UseVanillaDirtPaint },
+                { "dirtpaintradius", FireConfig.DirtPaintRadius },
+                { "rampenabled", FireConfig.FireRampEnabled },
+                { "rampduration", FireConfig.FireRampDurationSeconds },
+                { "rampstart", FireConfig.FireRampStartFraction },
+                { "exhaustionenabled", FireConfig.GroundFuelExhaustionEnabled },
+                { "fuelregrow", FireConfig.GroundFuelRegrowSeconds },
+                { "windbias", FireConfig.WindSpreadBiasEnabled },
+                { "windupwindchance", FireConfig.WindUpwindIgniteChance },
+                { "windinfluence", FireConfig.WindInfluence },
+                { "dousingradius", FireConfig.DousingBombRadius },
+                { "persistfires", FireConfig.PersistFiresEnabled },
+                { "firebreaks", FireConfig.GroundFirebreaksEnabled },
+                { "treeregrowth", FireConfig.TreeRegrowthEnabled },
+                { "treeregrowthseconds", FireConfig.TreeRegrowthSeconds },
+                { "groundleashenabled", FireConfig.GroundMaxSpreadDistanceEnabled },
+                { "groundleashdistance", FireConfig.GroundMaxSpreadDistance },
+                { "enabled", FireConfig.Enabled },
+            };
+            return _settable;
+        }
+
+        /// <summary>Forward a locally-typed fireset to the server, where the value actually matters.</summary>
+        internal static void ForwardToServerIfClient(string key, string raw)
+        {
+            if (ValheimBridge.IsServer()) return;
+            if (!Settable().ContainsKey(key)) return;
+            ValheimBridge.SendConfigSetToServer(key, raw);
+        }
+
+        /// <summary>
+        /// Server-side landing for a client's forwarded fireset. Trusted-tester
+        /// surface: the client command is admin-gated and the sender id is
+        /// logged for audit; hard server-side admin validation is deliberate
+        /// scope left for a public release.
+        /// </summary>
+        public static void ApplyRemote(long sender, string key, string raw)
+        {
+            key = key?.ToLowerInvariant();
+            if (key == null || !Settable().TryGetValue(key, out BepInEx.Configuration.ConfigEntryBase entry))
+            {
+                FireLogger.Warn($"fireset (remote from {sender}): unknown key '{key}'.");
+                return;
+            }
+            try
+            {
+                entry.SetSerializedValue(raw);
+                FireLogger.Info($"fireset (remote from {sender}): {key} = {entry.BoxedValue}");
+            }
+            catch (System.Exception ex)
+            {
+                FireLogger.Warn($"fireset (remote from {sender}): couldn't parse '{raw}' for {key}: {ex.Message}");
+            }
+        }
     }
 }

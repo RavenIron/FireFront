@@ -44,7 +44,7 @@ startfire [radius]      — ignite everything burnable within radius of you
 stopfire                — extinguish whatever's under your crosshair
 clearfires              — nuke every active fire instantly
 firedebug               — toggle verbose fire logging
-fireset <key> <value>   — live-tune settings, no restart needed
+fireset <key> <value>   — live-tune settings, no restart needed (applies on the server no matter where you type it)
 ```
 Full list of tunable `fireset` keys: `burnduration`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `burnbuildings`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `dousingradius`, `persistfires`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `enabled`
 

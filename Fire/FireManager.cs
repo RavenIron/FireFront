@@ -292,7 +292,7 @@ namespace FireFront.Fire
             if (routedRpc != null && !ReferenceEquals(routedRpc, _registeredRpcInstance))
             {
                 _registeredRpcInstance = routedRpc; // guarded by reference, so a reconnect's fresh instance re-registers
-                ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest);
+                ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest, HandleConfigSetRequest);
             }
 
             if (FireConfig.ExtinguishKey.Value.IsDown())
@@ -413,6 +413,13 @@ namespace FireFront.Fire
                 ValheimBridge.SendExtinguishRequestToServer(targetId, posOrNull.Value, FireConfig.ExtinguishGroundRadius.Value);
                 ValheimBridge.ShowPlayerMessage("Fire extinguished");
             }
+        }
+
+        /// <summary>Server-side landing for a client's forwarded fireset — see FireDevCommands.ApplyRemote.</summary>
+        private void HandleConfigSetRequest(long sender, string key, string raw)
+        {
+            if (!ValheimBridge.IsServer()) return;
+            FireFront.Commands.FireDevCommands.ApplyRemote(sender, key, raw);
         }
 
         /// <summary>

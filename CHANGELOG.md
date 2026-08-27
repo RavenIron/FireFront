@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.3
+
+- **`fireset` now applies on the server no matter where you type it.** Console
+  commands run where they're typed, and every FireFront setting that matters is
+  read by the server's simulation — so a client's fireset used to change its own
+  irrelevant config copy and silently do nothing ("rampstart didn't work",
+  "burnbuildings didn't work"). A client's fireset now also forwards to the
+  server over a new RPC and lands on the server's real config, with the same
+  value parsing and range clamping. The server logs every remote set with the
+  sender's peer id.
+
 ## 0.18.2
 
 - **New config `BurnPlayerBuildings` (default true) + `fireset burnbuildings`.**

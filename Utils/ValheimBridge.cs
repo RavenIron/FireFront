@@ -1985,6 +1985,7 @@ namespace FireFront.Utils
         private const string RpcFireEvent = "FireFront_FireEvent";
         private const string RpcGroundFireSync = "FireFront_GroundFireSync";
         private const string RpcExtinguishRequest = "FireFront_ExtinguishRequest";
+        private const string RpcConfigSet = "FireFront_ConfigSet";
 
         public static bool IsServer() => ZNet.instance != null && ZNet.instance.IsServer();
 
@@ -2039,7 +2040,8 @@ namespace FireFront.Utils
             System.Action<long, ZDOID, long> onIgniteRequest,
             System.Action<long, ZDOID, bool> onFireEvent,
             System.Action<long, ZPackage> onGroundFireSync,
-            System.Action<long, ZDOID, Vector3, float> onExtinguishRequest)
+            System.Action<long, ZDOID, Vector3, float> onExtinguishRequest,
+            System.Action<long, string, string> onConfigSet)
         {
             if (ZRoutedRpc.instance == null)
             {
@@ -2060,7 +2062,8 @@ namespace FireFront.Utils
                 ZRoutedRpc.instance.Register<ZDOID, bool>(RpcFireEvent, onFireEvent);
                 ZRoutedRpc.instance.Register<ZPackage>(RpcGroundFireSync, onGroundFireSync);
                 ZRoutedRpc.instance.Register<ZDOID, Vector3, float>(RpcExtinguishRequest, onExtinguishRequest);
-                FireLogger.Info($"[IGNITE-TRACE] All 4 FireFront RPCs registered successfully (IsServer={IsServer()}).");
+                ZRoutedRpc.instance.Register<string, string>(RpcConfigSet, onConfigSet);
+                FireLogger.Info($"[IGNITE-TRACE] All 5 FireFront RPCs registered successfully (IsServer={IsServer()}).");
             }
             catch (System.Exception ex)
             {
@@ -2155,6 +2158,27 @@ namespace FireFront.Utils
             catch (System.Exception ex)
             {
                 FireLogger.Info($"[IGNITE-TRACE] SendExtinguishRequestToServer THREW: {ex}");
+            }
+        }
+
+        /// <summary>
+        /// Client → server: "apply this fireset on YOUR config." Console
+        /// commands run where they're typed, but every FireFront setting that
+        /// matters is read by the server's simulation — before this forward
+        /// existed, a client's fireset changed its own irrelevant copy and the
+        /// server never heard (cost two real debugging rounds: 'rampstart 1'
+        /// and 'burnbuildings false' both "didn't work").
+        /// </summary>
+        public static void SendConfigSetToServer(string key, string raw)
+        {
+            if (ZRoutedRpc.instance == null) return;
+            try
+            {
+                ZRoutedRpc.instance.InvokeRoutedRPC(GetServerPeerId(), RpcConfigSet, key, raw);
+            }
+            catch (System.Exception ex)
+            {
+                FireLogger.Info($"[IGNITE-TRACE] SendConfigSetToServer THREW: {ex}");
             }
         }
     }
