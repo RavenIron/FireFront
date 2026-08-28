@@ -10,6 +10,7 @@ namespace FireFront.Config
     {
         public static ConfigEntry<bool> Enabled;
         public static ConfigEntry<float> BurnDurationSeconds;
+        public static ConfigEntry<float> SpreadMaturityFraction;
         public static ConfigEntry<float> SpreadRadius;
         public static ConfigEntry<int> MaxConcurrentBurning;
         public static ConfigEntry<int> QueueSize;
@@ -71,6 +72,18 @@ namespace FireFront.Config
                 new ConfigDescription(
                     "Seconds a piece burns before it is destroyed.",
                     new AcceptableValueRange<float>(1f, 600f)));
+
+            SpreadMaturityFraction = config.Bind(
+                "Fire", "SpreadMaturityFraction", 0.25f,
+                new ConfigDescription(
+                    "Fraction of its burn duration a burning object must burn before it can " +
+                    "ignite anything — neighbors or the ground under it. This ties the fire " +
+                    "front's pace to how long fuel takes to burn: at defaults (240s x 0.25) a " +
+                    "tree becomes contagious about a minute into its burn instead of torching " +
+                    "its whole reach on the next spread cycle. It burns, glows, and hurts from " +
+                    "second one — it just isn't throwing fire yet. Ground fire's cell-to-cell " +
+                    "crawl is unaffected. 0 = old instant-contagion behavior.",
+                    new AcceptableValueRange<float>(0f, 0.9f)));
 
             SpreadRadius = config.Bind(
                 "Fire", "SpreadRadius", 8f,

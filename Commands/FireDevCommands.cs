@@ -47,7 +47,7 @@ namespace FireFront.Commands
                 args => FireDebug(args));
 
             new Terminal.ConsoleCommand("fireset",
-                "FireFront: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>",
+                "FireFront: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>",
                 args => FireSet(args));
 
             new Terminal.ConsoleCommand("firelistprefabs",
@@ -226,7 +226,7 @@ namespace FireFront.Commands
         {
             if (args.Length < 3)
             {
-                Say(args, "Usage: fireset <burnduration|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>");
+                Say(args, "Usage: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|enabled> <value>");
                 return;
             }
 
@@ -393,6 +393,10 @@ namespace FireFront.Commands
                     break;
                 case "douseimmunity":
                     if (float.TryParse(raw, out float di)) { FireConfig.DouseImmunitySeconds.Value = di; Ok(args, key, FireConfig.DouseImmunitySeconds.Value); }
+                    else Bad(args, raw);
+                    break;
+                case "firematurity":
+                    if (float.TryParse(raw, out float fm)) { FireConfig.SpreadMaturityFraction.Value = fm; Ok(args, key, FireConfig.SpreadMaturityFraction.Value); }
                     else Bad(args, raw);
                     break;
                 case "firebreaks":
@@ -575,6 +579,7 @@ namespace FireFront.Commands
             _settable = new System.Collections.Generic.Dictionary<string, BepInEx.Configuration.ConfigEntryBase>
             {
                 { "burnduration", FireConfig.BurnDurationSeconds },
+                { "firematurity", FireConfig.SpreadMaturityFraction },
                 { "spreadradius", FireConfig.SpreadRadius },
                 { "maxburning", FireConfig.MaxConcurrentBurning },
                 { "queuesize", FireConfig.QueueSize },

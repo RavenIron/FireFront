@@ -65,6 +65,7 @@ namespace FireFront.Fire
         private struct BurningState
         {
             public float ExpireAt;
+            public float IgnitedAt;  // for the spread-maturity gate: a burner passes fire on only after burning a while
             public Vector3 Position;
             public string PrefabName;
             public int KillAttempts; // bounded retry if resolving a live Component at expiry fails
@@ -683,7 +684,8 @@ namespace FireFront.Fire
             {
                 sb.Append("obj\t").Append(kv.Key.UserID).Append('\t').Append(kv.Key.ID).Append('\t')
                   .Append(kv.Value.Position.x).Append('\t').Append(kv.Value.Position.y).Append('\t').Append(kv.Value.Position.z).Append('\t')
-                  .Append(kv.Value.ExpireAt - now).Append('\n');
+                  .Append(kv.Value.ExpireAt - now).Append('\t')
+                  .Append(now - kv.Value.IgnitedAt).Append('\n'); // burn age, so restored burners keep their spread maturity
             }
             foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
             {
@@ -786,6 +788,13 @@ namespace FireFront.Fire
                             if (_burning.TryGetValue(id, out BurningState st))
                             {
                                 st.ExpireAt = now + remaining;
+                                // Burn age (field 7) restores spread maturity. A store
+                                // written before the field existed omits it — treat
+                                // those burners as already mature, matching how they
+                                // behaved when they were saved.
+                                st.IgnitedAt = f.Length > 7
+                                    ? now - float.Parse(f[7])
+                                    : now - FireConfig.BurnDurationSeconds.Value;
                                 _burning[id] = st;
                                 objects++;
                             }
@@ -869,7 +878,7 @@ namespace FireFront.Fire
             return $"FireFront: burning {_burning.Count}/{FireConfig.MaxConcurrentBurning.Value}, " +
                    $"queued {_queue.Count}/{_queue.Capacity}, " +
                    $"ground {_groundBurning.Count}/{FireConfig.GroundMaxConcurrent.Value} (enabled {FireConfig.GroundSpreadEnabled.Value}, vfxcap {FireConfig.GroundVfxMaxConcurrent.Value}, dmgcap {FireConfig.GroundDamageMaxConcurrent.Value}, raining {ValheimBridge.IsRaining()}), " +
-                   $"burn {FireConfig.BurnDurationSeconds.Value}s, " +
+                   $"burn {FireConfig.BurnDurationSeconds.Value}s (maturity {(FireConfig.SpreadMaturityFraction.Value * 100f):F0}%), " +
                    $"radius {FireConfig.SpreadRadius.Value}m, " +
                    $"groundradius {FireConfig.GroundSpreadRadius.Value}m, " +
                    $"interval {FireConfig.SpreadCheckInterval.Value}s, " +
@@ -1254,6 +1263,7 @@ namespace FireFront.Fire
             _burning[id] = new BurningState
             {
                 ExpireAt = Time.time + FireConfig.BurnDurationSeconds.Value,
+                IgnitedAt = Time.time,
                 Position = position,
                 PrefabName = ValheimBridge.PrefabNameOf(target)
             };
@@ -1922,9 +1932,22 @@ namespace FireFront.Fire
             // spread cycle just to read a position we already have cached.
             _scratch.Clear();
             _scratch.AddRange(_burning.Keys);
+            // Spread maturity: a burning object passes fire on only after it has
+            // burned SpreadMaturityFraction of its burn time. Without this, a
+            // just-caught tree could torch its whole reach on the very next
+            // 0.75s cycle while itself burning for minutes — the front raced
+            // ahead at a pace totally disconnected from how long fuel takes to
+            // burn. Gating neighbor ignition, ZDO candidates, AND ground
+            // seeding ties front speed to burn duration: at defaults (240s x
+            // 0.25) a tree becomes contagious ~60s into its burn. It still
+            // burns, glows, and hurts from second one — it just isn't throwing
+            // fire yet. Ground fire's own cell-to-cell crawl is untouched: that
+            // channel is already paced, and it's how fire creeps INTO a stand.
+            float maturitySeconds = FireConfig.BurnDurationSeconds.Value * FireConfig.SpreadMaturityFraction.Value;
             foreach (ZDOID burnerId in _scratch)
             {
                 if (!_burning.TryGetValue(burnerId, out BurningState burnerState)) continue;
+                if (Time.time - burnerState.IgnitedAt < maturitySeconds) continue;
                 Vector3 origin = burnerState.Position;
 
                 for (int i = 0; i < _candidates.Count; i++)

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.18.5
+
+- **Front pace now tied to burn time.** A burning object must burn
+  `SpreadMaturityFraction` of its burn duration (default 0.25 — about a minute
+  at the default 240s burn) before it can ignite neighbors or seed the ground
+  under itself. Before, a just-caught tree could torch its entire reach on the
+  very next spread cycle while itself burning for four minutes, so the front
+  raced ahead at a pace disconnected from the fuel. A burning-but-immature
+  tree still glows and hurts — it just isn't throwing fire yet. Ground fire's
+  own cell-to-cell crawl is unchanged. `fireset firematurity`, 0 restores the
+  old instant contagion. Burn age persists across restarts (restored fires
+  keep their maturity).
+
 ## 0.18.4
 
 - **Dousing now holds — firefighting is winnable.** Anything deliberately

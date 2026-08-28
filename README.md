@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.18.2**
+🔥 **FireFront — Tester Build v0.18.5**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -16,6 +16,7 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • Standing in fire hurts, players and mobs alike — same mechanism vanilla campfires use
 • **New: fire follows the wind.** The front stretches downwind and thins out upwind, using the game's real wind — and how *hard* it's blowing matters now too. A gale drives a long narrow tongue of fire; a calm day burns in a lazy, even circle. Watch a fire when the weather turns.
 • Fires start small and ramp up over ~10 minutes instead of instantly raging
+• **New in 0.18.5: fire spreads at the pace of its fuel.** A burning tree has to be properly alight (~a minute in) before it starts torching neighbors and dropping fire to the ground — no more front teleporting through a forest faster than anything actually burns. Tune with `fireset firematurity` (0 = old instant spread)
 • Rain douses grass fire (an already-burning building keeps going)
 • Burned ground is spent — it can't relight for ~90s, so the front *advances* instead of churning in place, and it leaves burn scars behind
 • Dirt paths and cultivated ground are real firebreaks; water stops spread too. **This protects your base more than you'd expect**: the leveled/pathed ground most bases sit on counts as fuel-free, so a wildfire will burn right up to the edge of your yard and stall there — your walls only catch if fire starts *inside* the perimeter (or you clear less ground). If it looks like "fire can't touch my buildings," it's actually your groundwork doing its job — keep a tended break around your base and it genuinely works, exactly like real firefighting
@@ -47,7 +48,7 @@ clearfires              — nuke every active fire instantly
 firedebug               — toggle verbose fire logging
 fireset <key> <value>   — live-tune settings, no restart needed (applies on the server no matter where you type it)
 ```
-Full list of tunable `fireset` keys: `burnduration`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `burnbuildings`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `douseimmunity`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `dousingradius`, `persistfires`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `enabled`
+Full list of tunable `fireset` keys: `burnduration`, `firematurity`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `burnbuildings`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `douseimmunity`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `dousingradius`, `persistfires`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `enabled`
 
 Wind ones worth playing with: `fireset windinfluence 0` ignores wind entirely (old-style even spread), `1` is full effect (the default). `firestatus` shows the live wind strength the fire is currently feeling.
 
