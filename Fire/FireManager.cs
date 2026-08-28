@@ -301,7 +301,7 @@ namespace FireFront.Fire
             if (routedRpc != null && !ReferenceEquals(routedRpc, _registeredRpcInstance))
             {
                 _registeredRpcInstance = routedRpc; // guarded by reference, so a reconnect's fresh instance re-registers
-                ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest, HandleConfigSetRequest, HandleStatusRequest, HandleStatusResponse);
+                ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest, HandleConfigSetRequest, HandleStatusRequest, HandleStatusResponse, HandleCommandRelay);
             }
 
             if (FireConfig.ExtinguishKey.Value.IsDown())
@@ -445,6 +445,12 @@ namespace FireFront.Fire
         {
             if (ValheimBridge.IsServer()) return;
             ValheimBridge.AddConsoleLine("[server] " + statusLine);
+        }
+
+        /// <summary>Server side: a client asked to run a whitelisted dev command here.</summary>
+        private void HandleCommandRelay(long sender, string commandLine)
+        {
+            Commands.FireDevCommands.ExecuteRelayed(sender, commandLine);
         }
 
         /// <summary>

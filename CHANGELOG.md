@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.19.0
+
+- **Every server command now works from anywhere.** `startfire`,
+  `clearfires`, `firegroundignite`, `firetreeregrow`, and
+  `firetreeregrowlist` used to refuse with "only works run from the server"
+  when typed on a client. They now relay: the command runs on the server —
+  authorized against the server's own adminlist for the SENDING peer,
+  vanilla's exact kick/ban check, never the typist's local claim — and every
+  line of output streams back to your console as `[server] ...`. Radius
+  commands act around the requesting player (the server-tracked position, not
+  a client-supplied one). Only a fixed whitelist of FireFront's own commands
+  can relay; crosshair commands (`ignite`, `stopfire`) keep their dedicated
+  forwards since target picking is inherently local.
+
+## 0.18.8
+
+- **`firestatus` answers from the server.** A client's local status always
+  read burning 0 / ground 0 — the counts live on the server. It now requests
+  the authoritative line and prints it as `[server] FireFront: ...`.
+
 ## 0.18.7
 
 - **Killed the GC frame spikes — debug logging is now free when off.** A tester

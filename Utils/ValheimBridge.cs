@@ -585,8 +585,16 @@ namespace FireFront.Utils
             return c;
         }
 
+        // While a relayed command executes on the headless server, "the local
+        // player" means the REQUESTING player — the server has none of its own.
+        // Set from the requester's peer refPos (server-tracked, not client-
+        // claimed) around the handler invocation; see ExecuteRelayed.
+        private static Vector3? _positionOverride;
+        public static void SetPositionOverride(Vector3? position) => _positionOverride = position;
+
         public static Vector3? LocalPlayerPosition()
         {
+            if (_positionOverride.HasValue) return _positionOverride;
             Player local = LocalPlayerField?.GetValue(null) as Player;
             return local != null ? local.transform.position : (Vector3?)null;
         }
@@ -1988,6 +1996,56 @@ namespace FireFront.Utils
         private const string RpcConfigSet = "FireFront_ConfigSet";
         private const string RpcStatusRequest = "FireFront_StatusRequest";
         private const string RpcStatusResponse = "FireFront_StatusResponse";
+        private const string RpcCommandRelay = "FireFront_CommandRelay";
+
+        /// <summary>Client → server: run this whitelisted dev command there; replies stream back on the status-response channel.</summary>
+        public static void SendCommandRelayToServer(string commandLine)
+        {
+            if (ZRoutedRpc.instance == null) return;
+            try { ZRoutedRpc.instance.InvokeRoutedRPC(GetServerPeerId(), RpcCommandRelay, commandLine); }
+            catch (System.Exception ex) { FireLogger.Info($"[IGNITE-TRACE] SendCommandRelayToServer THREW: {ex}"); }
+        }
+
+        // Server-side authorization for relayed commands. This mirrors exactly
+        // how vanilla gates its own kick/ban RPCs: ListContainsId(m_adminList,
+        // socket.GetHostName()) — including the id-prefix handling crossplay
+        // needs. FAIL CLOSED: any reflection or lookup failure refuses. The
+        // typist's local admin state is NEVER trusted for relayed execution —
+        // that check lives on their machine and a modified client could claim
+        // anything.
+        private static readonly FieldInfo ZNetAdminListField = typeof(ZNet).GetField("m_adminList", AnyInstance);
+        private static readonly MethodInfo ZNetListContainsIdMethod = typeof(ZNet).GetMethod("ListContainsId", AnyInstance);
+
+        public static bool PeerIsAdmin(long peerId)
+        {
+            try
+            {
+                ZNet net = ZNet.instance;
+                if (net == null) return false;
+                ZNetPeer peer = net.GetPeer(peerId);
+                string host = peer?.m_rpc?.GetSocket()?.GetHostName();
+                if (string.IsNullOrEmpty(host)) return false;
+                object adminList = ZNetAdminListField?.GetValue(net);
+                if (adminList == null || ZNetListContainsIdMethod == null) return false;
+                return (bool)ZNetListContainsIdMethod.Invoke(net, new[] { adminList, (object)host });
+            }
+            catch (System.Exception ex)
+            {
+                FireLogger.Warn($"[RELAY] admin check failed for peer {peerId}: {ex.Message} — refusing.");
+                return false;
+            }
+        }
+
+        /// <summary>The server-tracked reference position of a connected peer, or null.</summary>
+        public static Vector3? PeerRefPosition(long peerId)
+        {
+            try
+            {
+                ZNetPeer peer = ZNet.instance?.GetPeer(peerId);
+                return peer != null ? peer.m_refPos : (Vector3?)null;
+            }
+            catch { return null; }
+        }
 
         /// <summary>Client → server: "send me your real firestatus line."</summary>
         public static void SendStatusRequestToServer()
@@ -2068,7 +2126,8 @@ namespace FireFront.Utils
             System.Action<long, ZDOID, Vector3, float> onExtinguishRequest,
             System.Action<long, string, string> onConfigSet,
             System.Action<long> onStatusRequest,
-            System.Action<long, string> onStatusResponse)
+            System.Action<long, string> onStatusResponse,
+            System.Action<long, string> onCommandRelay)
         {
             if (ZRoutedRpc.instance == null)
             {
@@ -2092,7 +2151,8 @@ namespace FireFront.Utils
                 ZRoutedRpc.instance.Register<string, string>(RpcConfigSet, onConfigSet);
                 ZRoutedRpc.instance.Register(RpcStatusRequest, onStatusRequest);
                 ZRoutedRpc.instance.Register<string>(RpcStatusResponse, onStatusResponse);
-                FireLogger.Info($"[IGNITE-TRACE] All 7 FireFront RPCs registered successfully (IsServer={IsServer()}).");
+                ZRoutedRpc.instance.Register<string>(RpcCommandRelay, onCommandRelay);
+                FireLogger.Info($"[IGNITE-TRACE] All 8 FireFront RPCs registered successfully (IsServer={IsServer()}).");
             }
             catch (System.Exception ex)
             {

@@ -124,12 +124,7 @@ namespace FireFront.Commands
         {
             if (!RequireAdmin(args)) return;
 
-            if (!ValheimBridge.IsServer())
-            {
-                Say(args, "startfire only works run from the server (or client-hosted/single-player) — " +
-                          "it ignites many targets at once with no single ZDOID to forward to the server.");
-                return;
-            }
+            if (RelayIfClient(args)) return;
 
             Vector3? posOrNull = ValheimBridge.LocalPlayerPosition();
             if (posOrNull == null) { Say(args, "No local player."); return; }
@@ -201,11 +196,7 @@ namespace FireFront.Commands
         {
             if (!RequireAdmin(args)) return;
 
-            if (!ValheimBridge.IsServer())
-            {
-                Say(args, "clearfires only works run from the server (or client-hosted/single-player).");
-                return;
-            }
+            if (RelayIfClient(args)) return;
 
             FireManager.Instance.ClearAll();
             Say(args, "All fires cleared.");
@@ -505,12 +496,7 @@ namespace FireFront.Commands
         {
             if (!RequireAdmin(args)) return;
 
-            if (!ValheimBridge.IsServer())
-            {
-                Say(args, "firegroundignite only works run from the server (or client-hosted/single-player) — " +
-                          "raw ground-area ignition has no single ZDOID to forward to the server.");
-                return;
-            }
+            if (RelayIfClient(args)) return;
 
             Vector3? posOrNull = ValheimBridge.LocalPlayerPosition();
             if (posOrNull == null) { Say(args, "No local player."); return; }
@@ -532,6 +518,8 @@ namespace FireFront.Commands
 
         private static void FireTreeRegrow(Terminal.ConsoleEventArgs args)
         {
+            if (RelayIfClient(args)) return;
+
             (int attempted, int stillPending) = FireManager.Instance.ForceTreeRegrowthNow();
             Say(args, $"firetreeregrow: forced {attempted} pending entries, {stillPending} still pending after attempt " +
                        "(blocked spots retry on backoff rather than failing permanently).");
@@ -539,6 +527,8 @@ namespace FireFront.Commands
 
         private static void FireTreeRegrowList(Terminal.ConsoleEventArgs args)
         {
+            if (RelayIfClient(args)) return;
+
             var lines = FireManager.Instance.DumpPendingRegrowth();
             if (lines.Count == 0) { Say(args, "No pending tree regrowth entries."); return; }
 
@@ -550,6 +540,7 @@ namespace FireFront.Commands
 
         private static void Say(Terminal.ConsoleEventArgs args, string msg)
         {
+            if (_replySink != null) { _replySink(msg); return; } // relayed: stream to the requesting peer
             args.Context?.AddString(msg);
             FireLogger.Info(msg);
         }
@@ -567,6 +558,91 @@ namespace FireFront.Commands
             if (ValheimBridge.IsLocalPlayerAdmin()) return true;
             Say(args, "Admin only.");
             return false;
+        }
+
+        // ---------------------------------------------------------------
+        // Generic command relay. Console commands run where they're typed;
+        // for commands that read or mutate SERVER state, the client sends the
+        // whole command line to the server, the same handler runs there, and
+        // every Say() it produces streams back to the typist's console as
+        // "[server] ..." lines. This replaced five separate "only works run
+        // from the server" refusals with actual behavior — and every future
+        // relayable command inherits the plumbing by joining the whitelist.
+        // ---------------------------------------------------------------
+
+        // WHITELIST — the only command names ExecuteRelayed will run. Never
+        // execute arbitrary console lines from the network: the relay is a
+        // remote-execution surface and this dictionary is its entire attack
+        // area. Crosshair commands (ignite, stopfire) can't relay — target
+        // resolution is inherently local — and firestatus/fireset have their
+        // own dedicated forwards.
+        private static readonly System.Collections.Generic.Dictionary<string, System.Action<Terminal.ConsoleEventArgs>> _relayable =
+            new System.Collections.Generic.Dictionary<string, System.Action<Terminal.ConsoleEventArgs>>
+            {
+                { "startfire", StartFire },
+                { "clearfires", ClearFires },
+                { "firegroundignite", FireGroundIgnite },
+                { "firetreeregrow", FireTreeRegrow },
+                { "firetreeregrowlist", FireTreeRegrowList },
+            };
+
+        // When non-null, Say() writes here instead of the local console —
+        // set only around a relayed invocation (main thread, no concurrency).
+        private static System.Action<string> _replySink;
+
+        /// <summary>Client side: forward this command line to the server. True if forwarded.</summary>
+        private static bool RelayIfClient(Terminal.ConsoleEventArgs args)
+        {
+            if (ValheimBridge.IsServer()) return false;
+            Say(args, $"FireFront: sent to server — replies appear as [server] lines. ({args.Args[0]})");
+            ValheimBridge.SendCommandRelayToServer(args.FullLine);
+            return true;
+        }
+
+        /// <summary>
+        /// Server side of the relay. Authorization happens HERE, against the
+        /// sending peer's identity on the server's own adminlist (vanilla's
+        /// exact kick/ban check) — the typist's local admin state is never
+        /// trusted. The requester's server-tracked position stands in for
+        /// "the local player" so radius commands (startfire,
+        /// firegroundignite) act around the person who asked.
+        /// </summary>
+        public static void ExecuteRelayed(long sender, string commandLine)
+        {
+            if (!ValheimBridge.IsServer()) return;
+
+            if (!ValheimBridge.PeerIsAdmin(sender))
+            {
+                ValheimBridge.SendStatusResponse(sender, "FireFront: relay refused — you are not in the server's adminlist.");
+                FireLogger.Warn($"[RELAY] refused '{commandLine}' from non-admin peer {sender}.");
+                return;
+            }
+
+            string name = (commandLine ?? "").Split(' ')[0].ToLowerInvariant();
+            if (!_relayable.TryGetValue(name, out System.Action<Terminal.ConsoleEventArgs> handler))
+            {
+                ValheimBridge.SendStatusResponse(sender, $"FireFront: '{name}' is not relayable.");
+                return;
+            }
+
+            FireLogger.Info($"[RELAY] {name} from peer {sender}: '{commandLine}'");
+            var fakeArgs = new Terminal.ConsoleEventArgs(commandLine, null);
+            _replySink = line => ValheimBridge.SendStatusResponse(sender, line);
+            ValheimBridge.SetPositionOverride(ValheimBridge.PeerRefPosition(sender));
+            try
+            {
+                handler(fakeArgs);
+            }
+            catch (System.Exception ex)
+            {
+                ValheimBridge.SendStatusResponse(sender, $"FireFront: {name} threw on the server: {ex.Message}");
+                FireLogger.Warn($"[RELAY] {name} threw: {ex}");
+            }
+            finally
+            {
+                _replySink = null;
+                ValheimBridge.SetPositionOverride(null);
+            }
         }
 
         private static void Ok(Terminal.ConsoleEventArgs args, string key, object val) =>
