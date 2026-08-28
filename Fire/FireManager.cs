@@ -225,6 +225,8 @@ namespace FireFront.Fire
         private readonly List<GroundCellKey> _exhaustedScratch = new List<GroundCellKey>();
 
         private float _nextCycle;
+        private float _nextCandidateRebuild;
+        private const float CandidateRebuildSeconds = 5f;
         private float _fireStartTime = -1f;
 
         // Where the current fire event first ignited (object or ground), captured
@@ -306,6 +308,8 @@ namespace FireFront.Fire
             {
                 TryPlayerExtinguish();
             }
+
+            DrainRemoteVfxSpawnQueue(); // client-side VFX budget — must run before the server gate below
 
             // Everything below this point is the actual fire simulation, and it
             // must only ever run on the server. Ignition already only populates
@@ -582,6 +586,7 @@ namespace FireFront.Fire
                 {
                     _fireOrigin = ValheimBridge.PositionOf(target);
                     _fireIgniterPlayerId = igniterPlayerId;   // fresh event: its culprit is set once, here
+                    _nextCandidateRebuild = 0f;               // new fire, new area — rebuild the candidate cache now
                 }
                 StartBurning(target, id);
             }
@@ -622,6 +627,8 @@ namespace FireFront.Fire
             foreach (GameObject instance in _remoteGroundVfx.Values) { if (instance != null) Destroy(instance); }
             _remoteVfx.Clear();
             _remoteGroundVfx.Clear();
+            _remoteVfxSpawnQueue.Clear();
+            _remoteVfxQueuedKeys.Clear();
             _groundExpiredSinceFlush.AddRange(_groundBurning.Keys); // so the next flush tells clients to clear these too
             _pendingIgniteResolutions.Clear();
             _burning.Clear();
@@ -1782,7 +1789,13 @@ namespace FireFront.Fire
                 int x = pkg.ReadInt();
                 int z = pkg.ReadInt();
                 float y = pkg.ReadSingle();
-                SpawnRemoteGroundVfxFor(new GroundCellKey(x, z), CellCenter(new GroundCellKey(x, z), y));
+                // Enqueue rather than spawn: the flush batches a second's worth
+                // of new cells, and building that many procedural particle
+                // systems in ONE frame was the client's other periodic frametime
+                // spike. The queue drains a few per frame in Update instead.
+                var key = new GroundCellKey(x, z);
+                if (!_remoteGroundVfx.ContainsKey(key) && _remoteVfxQueuedKeys.Add(key))
+                    _remoteVfxSpawnQueue.Add((key, CellCenter(key, y)));
             }
 
             int expiredCount = pkg.ReadInt();
@@ -1793,7 +1806,29 @@ namespace FireFront.Fire
             {
                 int x = pkg.ReadInt();
                 int z = pkg.ReadInt();
-                RemoveRemoteGroundVfxFor(new GroundCellKey(x, z));
+                var key = new GroundCellKey(x, z);
+                _remoteVfxQueuedKeys.Remove(key); // expired before it ever spawned — drop it from the queue
+                RemoveRemoteGroundVfxFor(key);
+            }
+        }
+
+        // Pending remote ground VFX, drained a few per frame — see the enqueue
+        // site in HandleGroundFireSync for why. Client-only in practice (the
+        // server returns from that handler before enqueueing anything).
+        private readonly List<(GroundCellKey key, Vector3 pos)> _remoteVfxSpawnQueue = new List<(GroundCellKey, Vector3)>();
+        private readonly HashSet<GroundCellKey> _remoteVfxQueuedKeys = new HashSet<GroundCellKey>();
+        private const int RemoteVfxSpawnsPerFrame = 3;
+
+        private void DrainRemoteVfxSpawnQueue()
+        {
+            int spawned = 0;
+            while (_remoteVfxSpawnQueue.Count > 0 && spawned < RemoteVfxSpawnsPerFrame)
+            {
+                (GroundCellKey key, Vector3 pos) = _remoteVfxSpawnQueue[_remoteVfxSpawnQueue.Count - 1];
+                _remoteVfxSpawnQueue.RemoveAt(_remoteVfxSpawnQueue.Count - 1);
+                if (!_remoteVfxQueuedKeys.Remove(key)) continue; // expired while queued
+                SpawnRemoteGroundVfxFor(key, pos);
+                spawned++;
             }
         }
 
@@ -1921,7 +1956,21 @@ namespace FireFront.Fire
             float objRadiusSqr = effectiveSpreadRadius * effectiveSpreadRadius;
             float groundRadius = FireConfig.GroundSpreadRadius.Value * ramp;
 
-            BuildCandidateList();
+            // Candidate picture is CACHED, not rebuilt per cycle. Rebuilding ran
+            // three FindObjectsOfType scene scans plus the ZDO sector sweep every
+            // 0.75s — and the sweep's radius follows the ground leash, so at
+            // leash 150m it walked 7x7=49 zones per cycle. On a machine hosting
+            // server and client together that burst was a visible periodic
+            // frametime spike in play. Candidates are static trees and walls: a
+            // few seconds of staleness is nothing at a front that moves meters
+            // per minute. Stale entries are already tolerated downstream (null
+            // Component checks; ComponentFromZdoid returns null for dead ZDOs).
+            // A brand-new fire forces an immediate rebuild via TryIgnite.
+            if (Time.time >= _nextCandidateRebuild)
+            {
+                _nextCandidateRebuild = Time.time + CandidateRebuildSeconds;
+                BuildCandidateList();
+            }
             LogSpreadCandidateDiagnostic(objRadiusSqr);
 
             // --- object burners: ignite nearby objects + seed nearby ground cells ---

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.18.6
+
+- **Fixed the periodic frametime spike during big fires.** Two causes, both
+  cadence-shaped: the server rebuilt its whole spread-candidate picture every
+  0.75s cycle (three scene scans plus a ZDO sector sweep whose radius follows
+  the ground leash — at leash 150m that walked 49 zones per cycle), and the
+  client spawned a full second's batch of ground-fire particle systems in one
+  frame on every sync flush. Candidates are static trees and walls, so the
+  scan is now cached and rebuilt every 5s (immediately on a new fire); remote
+  VFX spawns drain a few per frame from a queue. No behavior change — same
+  fire, smoother frames, biggest win on machines hosting server and client
+  together.
+
 ## 0.18.5
 
 - **Front pace now tied to burn time.** A burning object must burn
