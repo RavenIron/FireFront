@@ -5,13 +5,13 @@ the memory notes in the assistant's store point here.
 
 ## Where everything stands
 
-- **Repo**: `main` at **0.19.2** (regrowth dedupe — see below). 0.19.1
-  (tag `v0.19.1`) is pushed to github.com/RavenIron/FireFront.
-- **Server AND client are both at 0.19.2 on disk** (deployed 2026-08-28 with
-  both processes stopped, verified by version strings in the copied DLLs —
-  not yet booted, so no log line has confirmed it loading). Client is the
-  Gale profile **`raveniron`** — NOT `Default`; the profile also carries
-  Ragnarok's Wrath and Server Devcommands.
+- **Repo**: `main` at **0.19.3** (regrowth dedupe + startfire headless fix —
+  see below). 0.19.1 (tag `v0.19.1`) is the last state pushed to
+  github.com/RavenIron/FireFront; 0.19.2/0.19.3 are local commits, unpushed.
+- **Server AND client are both at 0.19.3, confirmed by boot log lines**
+  (`FireFront 0.19.3 loaded`, all 8 RPCs, RW bridging against 0.19.3).
+  Client is the Gale profile **`raveniron`** — NOT `Default`; the profile
+  also carries Ragnarok's Wrath and Server Devcommands.
 - **Testers**: still on the **0.18.0** zip from the original Discord post.
   `dist\RavenIron-FireFront-0.19.2.zip` is built and version-guard-checked.
   **Owner's call 2026-08-28: no Discord post needed** — the regenerated
@@ -33,8 +33,11 @@ the memory notes in the assistant's store point here.
    FindObjectsOfType), which see nothing headless — the 0.17.4 root cause,
    never converted for this command. It now also sweeps the ZDO layer via
    `FireManager.IgniteBurnablesNear` (own scratch list — never clobbers the
-   spread cycle's `_zdoCandidates` cache). In-game verification pending:
-   rerun `startfire 10` near burnables and expect a non-zero count. The
+   spread cycle's `_zdoCandidates` cache). **VERIFIED LIVE same day after a
+   server bounce (0.19.3 both sides, load lines confirmed):** relayed
+   `startfire 10` near real trees answered `attempted 3 targets within 10m`
+   and the next heartbeat showed `burning 3/50` — three real fires on the
+   headless server where the identical command had found zero. The
    doubled startfire in the server log was the owner running it twice (two
    separate client "sent to server" lines), not a double-send. The 0.19.1
    relay-before-local-gate fix is proven. Historical root cause kept for the
