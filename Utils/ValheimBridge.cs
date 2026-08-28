@@ -1986,6 +1986,31 @@ namespace FireFront.Utils
         private const string RpcGroundFireSync = "FireFront_GroundFireSync";
         private const string RpcExtinguishRequest = "FireFront_ExtinguishRequest";
         private const string RpcConfigSet = "FireFront_ConfigSet";
+        private const string RpcStatusRequest = "FireFront_StatusRequest";
+        private const string RpcStatusResponse = "FireFront_StatusResponse";
+
+        /// <summary>Client → server: "send me your real firestatus line."</summary>
+        public static void SendStatusRequestToServer()
+        {
+            if (ZRoutedRpc.instance == null) return;
+            try { ZRoutedRpc.instance.InvokeRoutedRPC(GetServerPeerId(), RpcStatusRequest); }
+            catch (System.Exception ex) { FireLogger.Info($"[IGNITE-TRACE] SendStatusRequestToServer THREW: {ex}"); }
+        }
+
+        /// <summary>Server → one requesting peer: the authoritative status line.</summary>
+        public static void SendStatusResponse(long targetPeer, string statusLine)
+        {
+            if (ZRoutedRpc.instance == null) return;
+            try { ZRoutedRpc.instance.InvokeRoutedRPC(targetPeer, RpcStatusResponse, statusLine); }
+            catch (System.Exception ex) { FireLogger.Info($"[IGNITE-TRACE] SendStatusResponse THREW: {ex}"); }
+        }
+
+        /// <summary>Print a line into the local in-game console (and always into the log).</summary>
+        public static void AddConsoleLine(string msg)
+        {
+            Console.instance?.AddString(msg);
+            FireLogger.Info(msg);
+        }
 
         public static bool IsServer() => ZNet.instance != null && ZNet.instance.IsServer();
 
@@ -2041,7 +2066,9 @@ namespace FireFront.Utils
             System.Action<long, ZDOID, bool> onFireEvent,
             System.Action<long, ZPackage> onGroundFireSync,
             System.Action<long, ZDOID, Vector3, float> onExtinguishRequest,
-            System.Action<long, string, string> onConfigSet)
+            System.Action<long, string, string> onConfigSet,
+            System.Action<long> onStatusRequest,
+            System.Action<long, string> onStatusResponse)
         {
             if (ZRoutedRpc.instance == null)
             {
@@ -2063,7 +2090,9 @@ namespace FireFront.Utils
                 ZRoutedRpc.instance.Register<ZPackage>(RpcGroundFireSync, onGroundFireSync);
                 ZRoutedRpc.instance.Register<ZDOID, Vector3, float>(RpcExtinguishRequest, onExtinguishRequest);
                 ZRoutedRpc.instance.Register<string, string>(RpcConfigSet, onConfigSet);
-                FireLogger.Info($"[IGNITE-TRACE] All 5 FireFront RPCs registered successfully (IsServer={IsServer()}).");
+                ZRoutedRpc.instance.Register(RpcStatusRequest, onStatusRequest);
+                ZRoutedRpc.instance.Register<string>(RpcStatusResponse, onStatusResponse);
+                FireLogger.Info($"[IGNITE-TRACE] All 7 FireFront RPCs registered successfully (IsServer={IsServer()}).");
             }
             catch (System.Exception ex)
             {

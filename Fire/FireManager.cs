@@ -301,7 +301,7 @@ namespace FireFront.Fire
             if (routedRpc != null && !ReferenceEquals(routedRpc, _registeredRpcInstance))
             {
                 _registeredRpcInstance = routedRpc; // guarded by reference, so a reconnect's fresh instance re-registers
-                ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest, HandleConfigSetRequest);
+                ValheimBridge.RegisterFireRpcs(HandleIgniteRequest, HandleFireEventBroadcast, HandleGroundFireSync, HandleExtinguishRequest, HandleConfigSetRequest, HandleStatusRequest, HandleStatusResponse);
             }
 
             if (FireConfig.ExtinguishKey.Value.IsDown())
@@ -431,6 +431,20 @@ namespace FireFront.Fire
         {
             if (!ValheimBridge.IsServer()) return;
             FireFront.Commands.FireDevCommands.ApplyRemote(sender, key, raw);
+        }
+
+        /// <summary>Server side of a client's firestatus: reply to THAT peer with the real line.</summary>
+        private void HandleStatusRequest(long sender)
+        {
+            if (!ValheimBridge.IsServer()) return;
+            ValheimBridge.SendStatusResponse(sender, StatusLine());
+        }
+
+        /// <summary>Client side: the server's authoritative status line arrives — print it.</summary>
+        private void HandleStatusResponse(long sender, string statusLine)
+        {
+            if (ValheimBridge.IsServer()) return;
+            ValheimBridge.AddConsoleLine("[server] " + statusLine);
         }
 
         /// <summary>

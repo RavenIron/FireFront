@@ -213,7 +213,20 @@ namespace FireFront.Commands
 
         private static void FireStatus(Terminal.ConsoleEventArgs args)
         {
-            Say(args, FireManager.Instance.StatusLine());
+            if (ValheimBridge.IsServer())
+            {
+                Say(args, FireManager.Instance.StatusLine());
+                return;
+            }
+
+            // A client's own StatusLine always shows burning 0/ground 0 — the
+            // counts live on the server and the client is a visual mirror, which
+            // made the local line actively misleading (confirmed by a real "the
+            // fire is raging around me but firestatus says 0" screenshot). Ask
+            // the server for the authoritative line instead; it prints as
+            // "[server] FireFront: ..." when the reply lands a moment later.
+            Say(args, "FireFront: fetching server status... (no reply = server runs pre-0.18.8)");
+            ValheimBridge.SendStatusRequestToServer();
         }
 
         private static void FireDebug(Terminal.ConsoleEventArgs args)
