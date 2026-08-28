@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.19.1
+
+- **Fixed relayed commands dying at "Admin only." on clients.** The local
+  admin check ran BEFORE the relay, and a client's admin flag only syncs
+  after running `devcommands` — so genuine admins got blocked while the
+  server's real authorization never got a say (caught live: three commands,
+  three rejections, zero relays). Relayable commands now relay first; the
+  server judges the sending peer against its own adminlist — the check that
+  actually matters — and the local gate only guards direct host/server
+  console execution. (Workaround on 0.19.0 clients: run `devcommands` once.)
+
 ## 0.19.0
 
 - **Every server command now works from anywhere.** `startfire`,

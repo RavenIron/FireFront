@@ -122,9 +122,13 @@ namespace FireFront.Commands
 
         private static void StartFire(Terminal.ConsoleEventArgs args)
         {
-            if (!RequireAdmin(args)) return;
-
+            // Relay FIRST: the server authorizes the sending peer against its own
+            // adminlist (the real, unspoofable check). The local RequireAdmin only
+            // guards direct execution here (host/server console) — running it before
+            // the relay blocked genuine admins whose client-side flag had not synced
+            // yet ("Admin only." x3, live 2026-08-28).
             if (RelayIfClient(args)) return;
+            if (!RequireAdmin(args)) return;
 
             Vector3? posOrNull = ValheimBridge.LocalPlayerPosition();
             if (posOrNull == null) { Say(args, "No local player."); return; }
@@ -194,9 +198,13 @@ namespace FireFront.Commands
 
         private static void ClearFires(Terminal.ConsoleEventArgs args)
         {
-            if (!RequireAdmin(args)) return;
-
+            // Relay FIRST: the server authorizes the sending peer against its own
+            // adminlist (the real, unspoofable check). The local RequireAdmin only
+            // guards direct execution here (host/server console) — running it before
+            // the relay blocked genuine admins whose client-side flag had not synced
+            // yet ("Admin only." x3, live 2026-08-28).
             if (RelayIfClient(args)) return;
+            if (!RequireAdmin(args)) return;
 
             FireManager.Instance.ClearAll();
             Say(args, "All fires cleared.");
@@ -494,9 +502,13 @@ namespace FireFront.Commands
 
         private static void FireGroundIgnite(Terminal.ConsoleEventArgs args)
         {
-            if (!RequireAdmin(args)) return;
-
+            // Relay FIRST: the server authorizes the sending peer against its own
+            // adminlist (the real, unspoofable check). The local RequireAdmin only
+            // guards direct execution here (host/server console) — running it before
+            // the relay blocked genuine admins whose client-side flag had not synced
+            // yet ("Admin only." x3, live 2026-08-28).
             if (RelayIfClient(args)) return;
+            if (!RequireAdmin(args)) return;
 
             Vector3? posOrNull = ValheimBridge.LocalPlayerPosition();
             if (posOrNull == null) { Say(args, "No local player."); return; }
