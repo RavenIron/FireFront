@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.19.1**
+🔥 **FireFront — Tester Build v0.19.2**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -17,6 +17,7 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • **New: fire follows the wind.** The front stretches downwind and thins out upwind, using the game's real wind — and how *hard* it's blowing matters now too. A gale drives a long narrow tongue of fire; a calm day burns in a lazy, even circle. Watch a fire when the weather turns.
 • Fires start small and ramp up over ~10 minutes instead of instantly raging
 • **New in 0.18.5: fire spreads at the pace of its fuel.** A burning tree has to be properly alight (~a minute in) before it starts torching neighbors and dropping fire to the ground — no more front teleporting through a forest faster than anything actually burns. Tune with `fireset firematurity` (0 = old instant spread)
+• **Fixed in 0.18.6/0.18.7: the periodic stutter during big fires is gone.** A tester clip (thank you — frametime graphs are gold) showed regular frame spikes every few seconds while a forest burned. Both feeders are dead: a periodic bookkeeping scan and debug logging that built its strings even when switched off. If big fires used to hiccup for you, try your worst on this build
 • Rain douses grass fire (an already-burning building keeps going)
 • Burned ground is spent — it can't relight for ~90s, so the front *advances* instead of churning in place, and it leaves burn scars behind
 • Dirt paths and cultivated ground are real firebreaks; water stops spread too. **This protects your base more than you'd expect**: the leveled/pathed ground most bases sit on counts as fuel-free, so a wildfire will burn right up to the edge of your yard and stall there — your walls only catch if fire starts *inside* the perimeter (or you clear less ground). If it looks like "fire can't touch my buildings," it's actually your groundwork doing its job — keep a tended break around your base and it genuinely works, exactly like real firefighting
@@ -28,6 +29,7 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 • Fires now remember who lit them — the whole spreading front carries its arsonist, even fire that crawled a long way from the first spark (natural/creature fire belongs to nobody). Nothing visible in-game yet; it feeds a companion mod's reputation system
 • **New in 0.18.0: fires survive server restarts.** Burning stuff comes back burning with its remaining time, burned-out ground stays spent, and trees waiting to regrow still regrow — a reboot no longer resets the world's fire state
 • **New in 0.18.2: server owners can make player builds fireproof.** `fireset burnbuildings false` (or the `BurnPlayerBuildings` config) means fire never ignites anything a player placed — not by spread, not by fire arrows, not by anything — while ruins and world structures still burn. The anti-grief switch, for servers that want wildfires without arson
+• **New in 0.19.0: every command works from anywhere.** `firestatus`, `startfire`, `clearfires` and friends used to refuse or answer wrong unless you typed them on the server itself — now they run on the server no matter where you type them (checked against the server's own admin list) and the output comes back to your console as `[server] ...`
 • Everything's config-tunable and adjustable live via console — no restart needed
 
 **Heads-up if updating from an older build:** update server and client together — a mixed-version pair (0.17.3 with anything older) means clicking `ignite` from a client silently does nothing.

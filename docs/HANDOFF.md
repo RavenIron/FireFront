@@ -1,25 +1,22 @@
-# FireFront — session handoff (2026-08-28)
+# FireFront — session handoff (2026-08-28, updated same day)
 
 Resume point for the next working session. Read this before touching anything;
 the memory notes in the assistant's store point here.
 
 ## Where everything stands
 
-- **Repo**: `main` at `8760abd` (tag `v0.19.1`), pushed to
-  github.com/RavenIron/FireFront. Working tree clean apart from this file.
-- **Server** (`C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated
-  server\BepInEx\plugins\FireFront\`): running **0.19.0**. That is fine —
-  0.19.1's only change is client-side command ordering — but deploy 0.19.1
-  there on the next natural restart so the version strings match.
-- **Client** (Gale profile **`raveniron`** — NOT `Default`): **0.19.1** on
-  disk, installed by the on-close watcher. The user plays through Gale; the
-  profile also carries Ragnarok's Wrath and Server Devcommands.
+- **Repo**: `main` at **0.19.2** (regrowth dedupe — see below). 0.19.1
+  (tag `v0.19.1`) is pushed to github.com/RavenIron/FireFront.
+- **Server AND client are both at 0.19.2 on disk** (deployed 2026-08-28 with
+  both processes stopped, verified by version strings in the copied DLLs —
+  not yet booted, so no log line has confirmed it loading). Client is the
+  Gale profile **`raveniron`** — NOT `Default`; the profile also carries
+  Ragnarok's Wrath and Server Devcommands.
 - **Testers**: still on the **0.18.0** zip from the original Discord post.
-  Every fix from 0.18.1 through 0.19.1 is unshipped to them. The
-  `dist\RavenIron-FireFront-0.19.1.zip` is built and version-guard-checked;
-  a fresh tester post is overdue (the old six-message split in
-  `dist\DISCORD_POST_READY.txt` is stale — regenerate from README.md, which
-  is now the single tester-voiced readme).
+  `dist\RavenIron-FireFront-0.19.2.zip` is built and version-guard-checked.
+  **Owner's call 2026-08-28: no Discord post needed** — the regenerated
+  split in `dist\DISCORD_POST_READY.txt` exists but is not to be shipped
+  unless the owner asks.
 
 ## In flight — finish these first
 
@@ -31,17 +28,22 @@ the memory notes in the assistant's store point here.
    a crossplay Steam id stringifies as `Steam_7656...` which never equals the
    bare adminlist entry. Fixed in 0.19.1 by relaying BEFORE the local gate
    (the server's `PeerIsAdmin` is the real, prefix-tolerant authorization).
-   **Next session: have the user relaunch (client now has 0.19.1) and rerun
+   **Next session: have the user relaunch (client now has 0.19.2) and rerun
    those three; watch for `[RELAY]` lines in the server log and `[server]`
    replies in the client log.** Optional user one-liner that also fixes
    vanilla's own check: append `Steam_76561198392625778` to
    `C:\Users\donfr\AppData\LocalLow\IronGate\Valheim\adminlist.txt` (the
    assistant is permission-blocked from that file).
-2. **Duplicate tree-regrowth entries.** `firetreeregrowlist` output showed
-   `Beech1 at (-107.10, 79.50, 48.42)` queued TWICE (one entry at attempts 13,
-   one fresh). Add a position-keyed dedupe guard where `_pendingRegrowth`
-   entries are enqueued in `Fire/FireManager.cs`.
-3. **Ship to testers.** Package is ready; write the post from README.md.
+2. ~~**Duplicate tree-regrowth entries.**~~ **DONE in 0.19.2 (2026-08-28):**
+   position-keyed dedupe (`EnqueueRegrowth`, 0.5m radius, existing entry wins —
+   its attempt count is real history) guards BOTH enqueue sites in
+   `Fire/FireManager.cs` (burn-down and sidecar restore; a pre-fix sidecar can
+   itself hold duplicates, and a deduped restore entry now counts as skipped,
+   not restored). Builds clean; in-game verification pending — rerun
+   `firetreeregrowlist` after the next burn and look for the
+   `Regrowth dedupe:` debug line or simply no double entries.
+3. **Ship to testers** — ON HOLD, owner said no Discord post needed
+   (2026-08-28). The 0.19.2 zip stays ready in dist\ if that changes.
 
 ## Operational facts that cost real time — do not relearn
 

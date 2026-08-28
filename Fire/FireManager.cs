@@ -207,6 +207,27 @@ namespace FireFront.Fire
 
         private readonly List<PendingRegrowth> _pendingRegrowth = new List<PendingRegrowth>();
         private readonly List<int> _regrowthScratchIndices = new List<int>();
+
+        // One spot must never hold two regrowth entries — a restored sidecar
+        // "regrow" line plus the same tree burning down again after the restore
+        // would spawn two overlapping trees (seen live 2026-08-28: Beech1 queued
+        // twice, one entry at attempts 13, one fresh). Keyed by position alone;
+        // the existing entry wins because its attempt count is real history.
+        private const float RegrowthDedupeRadiusSqr = 0.25f; // 0.5m — same physical spot
+
+        private bool EnqueueRegrowth(PendingRegrowth entry)
+        {
+            for (int i = 0; i < _pendingRegrowth.Count; i++)
+            {
+                if ((_pendingRegrowth[i].Position - entry.Position).sqrMagnitude <= RegrowthDedupeRadiusSqr)
+                {
+                    FireLogger.Debug($"Regrowth dedupe: {entry.PrefabName} at {entry.Position} already queued — skipped.");
+                    return false;
+                }
+            }
+            _pendingRegrowth.Add(entry);
+            return true;
+        }
         private int _treesRegrownCount; // running total of successful spawns, for firestatus visibility
 
         // Reused each cycle to avoid per-frame allocation.
@@ -831,14 +852,14 @@ namespace FireFront.Fire
 
                         case "regrow":
                         {
-                            _pendingRegrowth.Add(new PendingRegrowth
+                            bool added = EnqueueRegrowth(new PendingRegrowth
                             {
                                 Position = new Vector3(float.Parse(f[1]), float.Parse(f[2]), float.Parse(f[3])),
                                 RegrowAt = now + Mathf.Max(1f, float.Parse(f[4])),
                                 Attempts = int.Parse(f[5]),
                                 PrefabName = f[6],
                             });
-                            regrow++;
+                            if (added) regrow++; else skipped++;
                             break;
                         }
                     }
@@ -1567,7 +1588,7 @@ namespace FireFront.Fire
 
                 if (FireConfig.TreeRegrowthEnabled.Value && ValheimBridge.KindOf(target) == BurnKind.Tree)
                 {
-                    _pendingRegrowth.Add(new PendingRegrowth
+                    EnqueueRegrowth(new PendingRegrowth
                     {
                         PrefabName = state.PrefabName,
                         Position = state.Position,

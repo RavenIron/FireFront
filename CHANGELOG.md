@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.2
+
+- **A burned spot can no longer queue two regrown trees.** Seen live: the same
+  Beech1 position pending regrowth twice — one entry deep into its retry
+  attempts, one fresh — which would have spawned two overlapping trees. Both
+  paths that queue regrowth (a tree burning down, and restoring the fire
+  sidecar after a restart) now dedupe by position; the existing entry wins
+  because its attempt count is real history.
+
 ## 0.19.1
 
 - **Fixed relayed commands dying at "Admin only." on clients.** The local
