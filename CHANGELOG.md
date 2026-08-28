@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.7
+
+- **Killed the GC frame spikes — debug logging is now free when off.** A tester
+  clip (steady ~10ms baseline, CPU and GPU both far from saturated, isolated
+  spikes to ~80ms every few seconds) showed the signature of Mono GC pauses.
+  The feeder: every debug trace built its log string BEFORE checking whether
+  debug logging was on — hundreds of dead strings a second during a big fire —
+  and debug logging also defaulted ON, adding BepInEx console/file I/O on top.
+  Debug calls now use an interpolated-string handler (the compiler skips all
+  formatting when disabled, verified in the compiled output), and the config
+  key was renamed VerboseLogging → DebugLogging (default off) so existing
+  configs stuck on the old always-on default go quiet on upgrade. `firedebug`
+  still toggles it live when you actually want the firehose.
+
 ## 0.18.6
 
 - **Fixed the periodic frametime spike during big fires.** Two causes, both

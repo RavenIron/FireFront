@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.18.6**
+🔥 **FireFront — Tester Build v0.18.7**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 

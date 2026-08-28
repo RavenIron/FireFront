@@ -113,8 +113,14 @@ namespace FireFront.Config
                     new AcceptableValueRange<float>(0.25f, 10f)));
 
             VerboseLogging = config.Bind(
-                "Debug", "VerboseLogging", true,
-                "Log every ignite/spread/queue/destroy event.");
+                "Debug", "DebugLogging", false,
+                "Log every ignite/spread/queue/destroy event (toggle live with firedebug). Off by " +
+                "default since 0.18.7: during a big fire this wrote hundreds of lines a second, and " +
+                "the string churn plus BepInEx console/file I/O fed periodic GC frame spikes on " +
+                "tester machines. The key was RENAMED from VerboseLogging deliberately — BepInEx " +
+                "never retro-applies a changed default to an existing config file (learned the hard " +
+                "way with UseProceduralVfx in 0.17.0), and a debug firehose that testers were " +
+                "unknowingly stuck with is exactly the kind of value that must not stick.");
 
             BurnTreesAndLogs = config.Bind(
                 "Fire", "BurnTreesAndLogs", true,
