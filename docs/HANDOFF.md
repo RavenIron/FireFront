@@ -20,20 +20,28 @@ the memory notes in the assistant's store point here.
 
 ## In flight — finish these first
 
-1. **Relay verification, 3 of 5 commands outstanding.** The 0.19.0 generic
-   command relay tested green for `firestatus` and `firetreeregrowlist`
-   (multi-line replies confirmed end-to-end). `firegroundignite`, `startfire`,
-   `clearfires` were blocked by the client-side "Admin only." gate — root
-   cause: vanilla's client-side `PlayerIsAdmin` does an exact-string match, and
-   a crossplay Steam id stringifies as `Steam_7656...` which never equals the
-   bare adminlist entry. Fixed in 0.19.1 by relaying BEFORE the local gate
-   (the server's `PeerIsAdmin` is the real, prefix-tolerant authorization).
-   **Next session: have the user relaunch (client now has 0.19.2) and rerun
-   those three; watch for `[RELAY]` lines in the server log and `[server]`
-   replies in the client log.** Optional user one-liner that also fixes
-   vanilla's own check: append `Steam_76561198392625778` to
-   `C:\Users\donfr\AppData\LocalLow\IronGate\Valheim\adminlist.txt` (the
-   assistant is permission-blocked from that file).
+1. ~~**Relay verification, 3 of 5 commands outstanding.**~~ **DONE 2026-08-28
+   — ALL FIVE RELAYABLE COMMANDS VERIFIED END-TO-END at 0.19.2 both sides.**
+   `firestatus` and `firetreeregrowlist` were green on 0.19.0;
+   `firegroundignite`, `startfire 10`, `clearfires` verified live today: zero
+   "Admin only." refusals, `[RELAY] <cmd> from peer -428794145` on the server
+   for each, and the matching `[server] ...` reply in the client log
+   (`Seeded ground fire...`, `startfire: attempted 0 targets within 10m`,
+   and `All fires cleared.` after clearing 8 entries). That "0 targets" was
+   NOT harmless staging ground — it exposed a real bug, fixed in 0.19.3:
+   startfire's target scan was still instance-only (AllPieces +
+   FindObjectsOfType), which see nothing headless — the 0.17.4 root cause,
+   never converted for this command. It now also sweeps the ZDO layer via
+   `FireManager.IgniteBurnablesNear` (own scratch list — never clobbers the
+   spread cycle's `_zdoCandidates` cache). In-game verification pending:
+   rerun `startfire 10` near burnables and expect a non-zero count. The
+   doubled startfire in the server log was the owner running it twice (two
+   separate client "sent to server" lines), not a double-send. The 0.19.1
+   relay-before-local-gate fix is proven. Historical root cause kept for the
+   record: vanilla's client-side `PlayerIsAdmin` exact-string match never
+   matches a crossplay `Steam_7656...` id against a bare adminlist entry;
+   the optional adminlist append (`Steam_76561198392625778`) remains a
+   nice-to-have for vanilla's own commands, nothing of ours needs it.
 2. ~~**Duplicate tree-regrowth entries.**~~ **DONE in 0.19.2 (2026-08-28):**
    position-keyed dedupe (`EnqueueRegrowth`, 0.5m radius, existing entry wins —
    its attempt count is real history) guards BOTH enqueue sites in

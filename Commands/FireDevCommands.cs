@@ -154,6 +154,13 @@ namespace FireFront.Commands
                     hit += TryIgniteIfInRange(logs[i], pos, radiusSqr);
             }
 
+            // The instance scans above see NOTHING on a headless server, so a
+            // relayed startfire always answered "0 targets" there (live,
+            // 2026-08-28, in a meadow full of burnables). The ZDO layer is the
+            // authoritative census headless; anything the instance pass already
+            // lit is skipped inside, so the count never doubles.
+            hit += FireManager.Instance.IgniteBurnablesNear(pos, radius);
+
             Say(args, $"startfire: attempted {hit} targets within {radius}m. {FireManager.Instance.StatusLine()}");
         }
 

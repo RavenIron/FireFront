@@ -2183,5 +2183,39 @@ namespace FireFront.Fire
                 TryIgnite(target);
             }
         }
+
+        // Scratch for IgniteBurnablesNear only — _zdoCandidates is the spread
+        // cycle's 5s cache and a console command must not clobber it.
+        private readonly List<ValheimBridge.ZdoBurnable> _consoleZdoScratch = new List<ValheimBridge.ZdoBurnable>();
+
+        /// <summary>
+        /// Console-facing area ignite, reading the ZDO layer: on a headless
+        /// server instance scans see nothing (the 0.17.4 lesson), so a relayed
+        /// `startfire` that only scanned instances permanently reported 0
+        /// targets. Returns how many ignitions were attempted; anything the
+        /// caller's own instance pass already lit is skipped via _burning.
+        /// </summary>
+        public int IgniteBurnablesNear(Vector3 origin, float radius)
+        {
+            ValheimBridge.CollectBurnableZdosNear(
+                origin, radius,
+                FireConfig.BurnTreesAndLogs.Value, FireConfig.BurnPlayerBuildings.Value,
+                _consoleZdoScratch);
+
+            int attempted = 0;
+            for (int i = 0; i < _consoleZdoScratch.Count; i++)
+            {
+                ValheimBridge.ZdoBurnable candidate = _consoleZdoScratch[i];
+                if (_burning.ContainsKey(candidate.Id)) continue;
+                if (_queue.Contains(candidate.Id)) continue;
+
+                Component target = ValheimBridge.ComponentFromZdoid(candidate.Id);
+                if (target == null) continue;
+                TryIgnite(target);
+                attempted++;
+            }
+            _consoleZdoScratch.Clear();
+            return attempted;
+        }
     }
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.19.3
+
+- **`startfire` actually finds targets on a dedicated server.** Caught live
+  during relay verification: `startfire 10` in a meadow full of burnables
+  answered "attempted 0 targets" — its target scan still walked instance
+  lists, which are empty on a headless server (the same root cause the
+  0.17.4 spread fix addressed; this command's own scan was never converted).
+  It now also sweeps the ZDO layer — the census a headless server actually
+  keeps — creating instances only for real ignitions, with anything the
+  instance pass already lit skipped so the count never doubles.
+
 ## 0.19.2
 
 - **A burned spot can no longer queue two regrown trees.** Seen live: the same
