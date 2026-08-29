@@ -699,6 +699,14 @@ namespace FireFront.Commands
             if (_settable != null) return _settable;
             _settable = new System.Collections.Generic.Dictionary<string, BepInEx.Configuration.ConfigEntryBase>
             {
+                // EVERY key handled by the FireSet switch must also appear here,
+                // or typing it on a client sets that CLIENT's config and silently
+                // never reaches the server — the console reports success, the
+                // simulation never changes, and the two disagree with no error
+                // anywhere. Caught live 2026-08-29 the day 'lowspec' was added:
+                // the client's caps dropped, the server's status line still read
+                // lowspec False.
+                { "lowspec", FireConfig.LowSpecPreset },
                 { "burnduration", FireConfig.BurnDurationSeconds },
                 { "firematurity", FireConfig.SpreadMaturityFraction },
                 { "spreadradius", FireConfig.SpreadRadius },

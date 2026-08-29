@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.7
+
+- **`fireset lowspec` typed on a client never reached the server.** 0.19.6
+  added `lowspec` to the command's switch but not to the map that forwards a
+  setting to the server, so the command set the CLIENT's own config, reported
+  success, and left the simulation untouched — the client console showed the
+  reduced caps while the server's `firestatus` still read `lowspec False`.
+  Caught the first time it was tested live. Every other key was already
+  forwarded correctly; an audit of all 47 switch cases against the 47 map
+  entries now shows them matching exactly, and the map carries a comment
+  saying that adding a case without a map entry produces exactly this silent
+  disagreement.
+
 ## 0.19.6
 
 - **`LowSpecPreset` — one switch for a machine that struggles.** Instead of
