@@ -2108,15 +2108,6 @@ namespace FireFront.Fire
             List<WearNTear> pieces = ValheimBridge.AllPieces;
             for (int i = 0; i < pieces.Count; i++) _candidates.Add(pieces[i]);
 
-            if (FireConfig.BurnTreesAndLogs.Value)
-            {
-                TreeBase[] trees = Object.FindObjectsOfType<TreeBase>();
-                for (int i = 0; i < trees.Length; i++) _candidates.Add(trees[i]);
-
-                TreeLog[] logs = Object.FindObjectsOfType<TreeLog>();
-                for (int i = 0; i < logs.Length; i++) _candidates.Add(logs[i]);
-            }
-
             // ZDO-layer candidates — see _zdoCandidates for why. One scan around
             // the fire's origin covers the whole event: cell-to-cell spread is
             // leashed to GroundMaxSpreadDistance from that origin, so origin +
@@ -2138,19 +2129,61 @@ namespace FireFront.Fire
                 }
             }
 
+            bool zdoScanRan = false;
             if (scanCenter.HasValue)
             {
                 float reach = Mathf.Max(FireConfig.SpreadRadius.Value, FireConfig.GroundSpreadRadius.Value);
                 float leash = FireConfig.GroundMaxSpreadDistanceEnabled.Value
                     ? FireConfig.GroundMaxSpreadDistance.Value
                     : 100f;
-                ValheimBridge.CollectBurnableZdosNear(
-                    scanCenter.Value, leash + reach + 8f,
+
+                // Sweep the fire it ACTUALLY is, not the fire it could eventually
+                // become. The leash is a lifetime maximum: a fire five cells wide
+                // got the same 150m+reach sweep as one that had burned for an
+                // hour, which at 64m zones is 7x7=49 sectors walked every rebuild
+                // regardless of size. Radius now follows the live front (furthest
+                // burner from the scan centre) plus one full reach so next cycle's
+                // spread is always covered, still capped at the old leash figure
+                // so this can never sweep MORE than it did before — only less,
+                // which for a young fire is one or nine sectors instead of 49.
+                float extent = 0f;
+                foreach (BurningState state in _burning.Values)
+                {
+                    float d = (state.Position - scanCenter.Value).sqrMagnitude;
+                    if (d > extent) extent = d;
+                }
+                foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
+                {
+                    float d = (CellCenter(kv.Key, kv.Value.Y) - scanCenter.Value).sqrMagnitude;
+                    if (d > extent) extent = d;
+                }
+                extent = Mathf.Sqrt(extent);
+
+                float radius = Mathf.Min(extent + reach + 8f, leash + reach + 8f);
+                zdoScanRan = ValheimBridge.CollectBurnableZdosNear(
+                    scanCenter.Value, radius,
                     FireConfig.BurnTreesAndLogs.Value, FireConfig.BurnPlayerBuildings.Value, _zdoCandidates);
             }
             else
             {
                 _zdoCandidates.Clear();
+            }
+
+            // Tree/log INSTANCE scans are a fallback, not the primary source.
+            // FindObjectsOfType walks every loaded GameObject in the scene and
+            // its cost rides the world's object count, not the fire's size — the
+            // dominant term in this rebuild, and the one a tester with a forest
+            // and a field of dropped wood pays hardest. The ZDO sweep above
+            // already resolves trees and logs (EnsureBurnablePrefabKinds maps
+            // both), and does it authoritatively, so these scans only earn their
+            // keep on a peer where the ZDO layer could not be read at all.
+            if (!zdoScanRan && FireConfig.BurnTreesAndLogs.Value)
+            {
+                TreeBase[] trees = Object.FindObjectsOfType<TreeBase>();
+                for (int i = 0; i < trees.Length; i++) _candidates.Add(trees[i]);
+
+                TreeLog[] logs = Object.FindObjectsOfType<TreeLog>();
+                for (int i = 0; i < logs.Length; i++) _candidates.Add(logs[i]);
             }
         }
 

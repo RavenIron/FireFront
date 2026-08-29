@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.19.5
+
+- **Cut the size of the periodic frametime spike, not just how often it
+  happens.** 0.18.6 stopped rebuilding the spread-candidate picture every
+  0.75s and cached it for 5s — which made the hitch rarer without making it
+  any smaller. Three costs went into each rebuild, and two of them scaled
+  with how much stuff was lying around the world rather than with the fire:
+  - The **ZDO sector sweep now follows the live fire front** instead of the
+    leash. The leash is a lifetime maximum, so a fire five cells across swept
+    the same 150m radius as one that had burned for an hour — 7x7 = 49 zones
+    every rebuild regardless of size. The radius is now the furthest burner
+    plus one full spread reach, still capped at the old figure, so it can
+    never sweep more than before and a young fire sweeps one or nine zones.
+  - The **`FindObjectsOfType` tree and log scans are now a fallback**, not
+    the default. They walk every loaded GameObject in the scene, so their
+    cost rides the world's object count — worst exactly where a tester has a
+    forest and a field of dropped wood. The ZDO sweep already resolves trees
+    and logs authoritatively, so the scans now run only on a peer that could
+    not read the ZDO layer at all.
+- **Scorch marks and fire VFX stopped allocating per spawn.** Every scorch
+  mark called `CreatePrimitive`, which builds a fresh mesh *and* a collider
+  only to destroy the collider on the next line, plus a new `Material`; every
+  particle effect instantiated its own `Material` too, always with the same
+  shader and texture. One shared quad mesh and one shared material each now.
+  Marks spawn per burned ground cell, so on a spreading front that churn was
+  continuous — and allocation churn on the render thread is the same shape of
+  problem 0.18.7 chased out of the logging path.
+
+  Not yet measured against a tester capture: the reasoning is that this work
+  is redundant or oversized, which holds regardless of what the outstanding
+  capture turns out to show.
+
 ## 0.19.4
 
 - **The Dousing Bomb was never missing — the warning was wrong.** Every start,

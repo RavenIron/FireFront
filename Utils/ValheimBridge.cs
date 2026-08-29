@@ -298,7 +298,14 @@ namespace FireFront.Utils
         /// includePlayerBuildings=false drops any piece carrying a creator
         /// stamp — world-generated WearNTear (ruins, dungeon chests) stays in.
         /// </summary>
-        public static void CollectBurnableZdosNear(Vector3 center, float radius, bool includeTreesAndLogs, bool includePlayerBuildings, List<ZdoBurnable> into)
+        /// <returns>
+        /// True if the ZDO layer was actually readable and the sweep ran. False
+        /// means the caller is blind here and must fall back to instance scans —
+        /// which is the ONLY case those scans are still worth their cost, since
+        /// this sweep otherwise finds the same trees, logs and pieces far more
+        /// cheaply (see BuildCandidateList).
+        /// </returns>
+        public static bool CollectBurnableZdosNear(Vector3 center, float radius, bool includeTreesAndLogs, bool includePlayerBuildings, List<ZdoBurnable> into)
         {
             into.Clear();
 
@@ -312,11 +319,11 @@ namespace FireFront.Utils
                                      $"FindSectorObjects null: {ZdoManFindSectorObjectsMethod == null}) — " +
                                      "spread falls back to instance candidates only.");
                 }
-                return;
+                return false;
             }
 
             Dictionary<int, bool> kinds = EnsureBurnablePrefabKinds();
-            if (kinds == null || kinds.Count == 0) return;
+            if (kinds == null || kinds.Count == 0) return false;
 
             _zdoScanScratch.Clear();
             int rings = Mathf.Max(1, Mathf.CeilToInt(radius / 64f));
@@ -332,7 +339,7 @@ namespace FireFront.Utils
                     _zdoScanFailureLogged = true;
                     FireLogger.Debug($"[ZDO-SCAN] FindSectorObjects threw: {ex.InnerException?.Message ?? ex.Message}");
                 }
-                return;
+                return false;
             }
 
             float radiusSqr = radius * radius;
@@ -348,6 +355,8 @@ namespace FireFront.Utils
                 if ((pos - center).sqrMagnitude > radiusSqr) continue;
                 into.Add(new ZdoBurnable { Id = zdo.m_uid, Position = pos });
             }
+
+            return true;
         }
 
         /// <summary>
@@ -1587,24 +1596,64 @@ namespace FireFront.Utils
         /// </summary>
         public static void SpawnScorchMark(Vector3 position, float size, float lifetimeSeconds)
         {
-            GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            Collider col = quad.GetComponent<Collider>();
-            if (col != null) Object.Destroy(col);
-
-            quad.name = "FireFrontScorchMark";
+            var quad = new GameObject("FireFrontScorchMark");
             quad.transform.position = position + Vector3.up * 0.03f; // avoid z-fighting with terrain
             quad.transform.rotation = Quaternion.Euler(90f, Random.Range(0f, 360f), 0f);
             quad.transform.localScale = new Vector3(size, size, 1f);
 
-            Shader shader = FindUsableParticleShader();
-            if (shader != null)
-            {
-                var material = new Material(shader) { mainTexture = GetOrCreateScorchTexture() };
-                MeshRenderer renderer = quad.GetComponent<MeshRenderer>();
-                if (renderer != null) renderer.material = material;
-            }
+            quad.AddComponent<MeshFilter>().sharedMesh = GetOrCreateQuadMesh();
+            MeshRenderer renderer = quad.AddComponent<MeshRenderer>();
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            Material shared = GetOrCreateScorchMaterial();
+            if (shared != null) renderer.sharedMaterial = shared;
 
             Object.Destroy(quad, lifetimeSeconds);
+        }
+
+        private static Mesh _cachedQuadMesh;
+        private static Material _cachedScorchMaterial;
+
+        /// <summary>
+        /// One quad mesh, shared by every scorch mark ever spawned.
+        /// </summary>
+        /// <remarks>
+        /// Replaces GameObject.CreatePrimitive(Quad), which built a fresh mesh
+        /// AND a MeshCollider per mark only for the collider to be destroyed on
+        /// the very next line. Scorch marks spawn per burned ground cell, so on
+        /// a spreading front that churn was continuous — and allocation churn on
+        /// the render thread is exactly the shape of the periodic GC stall
+        /// 0.18.7 chased out of the logging path.
+        /// </remarks>
+        private static Mesh GetOrCreateQuadMesh()
+        {
+            if (_cachedQuadMesh != null) return _cachedQuadMesh;
+
+            var mesh = new Mesh { name = "FireFrontQuad" };
+            mesh.vertices = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f), new Vector3(0.5f, -0.5f, 0f),
+                new Vector3(-0.5f,  0.5f, 0f), new Vector3(0.5f,  0.5f, 0f),
+            };
+            mesh.uv = new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 1f), new Vector2(1f, 1f) };
+            mesh.triangles = new[] { 0, 2, 1, 2, 3, 1 };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            _cachedQuadMesh = mesh;
+            return mesh;
+        }
+
+        /// <summary>Shared scorch material — every mark renders from this one instance.</summary>
+        private static Material GetOrCreateScorchMaterial()
+        {
+            if (_cachedScorchMaterial != null) return _cachedScorchMaterial;
+
+            Shader shader = FindUsableParticleShader();
+            if (shader == null) return null;
+
+            _cachedScorchMaterial = new Material(shader) { mainTexture = GetOrCreateScorchTexture() };
+            return _cachedScorchMaterial;
         }
 
         private static Texture2D _cachedSoftParticleTexture;
@@ -1640,20 +1689,32 @@ namespace FireFront.Utils
             return tex;
         }
 
+        private static Material _cachedParticleMaterial;
+
+        /// <summary>
+        /// Assigns the ONE shared particle material rather than instantiating a
+        /// fresh Material per effect. Ground cells alone can spawn up to
+        /// GroundVfxMaxConcurrent of these, each previously carrying its own
+        /// Material instance — pure per-spawn allocation for a material whose
+        /// shader and texture were identical every time. sharedMaterial is the
+        /// assignment that does NOT clone; `renderer.material` would silently
+        /// instantiate a per-renderer copy and undo the whole point.
+        /// </summary>
         private static void ApplyParticleShader(ParticleSystemRenderer renderer, string callerName)
         {
-            Shader shader = FindUsableParticleShader();
-            if (shader != null)
+            if (_cachedParticleMaterial == null)
             {
-                var material = new Material(shader);
-                material.mainTexture = GetOrCreateSoftParticleTexture();
-                renderer.material = material;
+                Shader shader = FindUsableParticleShader();
+                if (shader == null)
+                {
+                    FireLogger.Warn($"{callerName}: no usable particle shader found in this build; " +
+                                     "using the default material (may render as a flat/incorrect color).");
+                    return;
+                }
+                _cachedParticleMaterial = new Material(shader) { mainTexture = GetOrCreateSoftParticleTexture() };
             }
-            else
-            {
-                FireLogger.Warn($"{callerName}: no usable particle shader found in this build; " +
-                                 "using the default material (may render as a flat/incorrect color).");
-            }
+
+            renderer.sharedMaterial = _cachedParticleMaterial;
         }
 
         /// <summary>
