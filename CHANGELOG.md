@@ -28,9 +28,14 @@
   continuous — and allocation churn on the render thread is the same shape of
   problem 0.18.7 chased out of the logging path.
 
-  Not yet measured against a tester capture: the reasoning is that this work
-  is redundant or oversized, which holds regardless of what the outstanding
-  capture turns out to show.
+  Verified in-game on the dedicated server the same day: a relayed
+  `startfire 10` lit three trees, and across the burn `zdoCandidates` read 4
+  and then 7 — the sweep tracking the front outward exactly as intended —
+  while ground fire seeded and spread (0 → 10 cells, then decaying as cells
+  exhausted). The failure mode this had to rule out was a sweep too tight to
+  find fuel, which would have shown as `zdoCandidates=0` and a fire that sat
+  still; neither happened. The SIZE of the saving is still unmeasured — that
+  needs a frametime capture, not a log.
 
 ## 0.19.4
 

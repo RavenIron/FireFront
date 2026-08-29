@@ -54,7 +54,26 @@ the memory notes in the assistant's store point here.
    `firetreeregrowlist` after the next burn and look for the
    `Regrowth dedupe:` debug line or simply no double entries.
 3. **Ship to testers** — ON HOLD, owner said no Discord post needed
-   (2026-08-28). The 0.19.2 zip stays ready in dist\ if that changes.
+   (2026-08-28). The zip stays ready in dist\ if that changes.
+
+4. **The frametime spike is BACK on a tester's machine — 0.19.5 is the
+   answer, unmeasured.** A tester capture (2026-08-29, mod vs no-mod, same
+   scene, same box) showed max frametime **101.9–146.3ms with FireFront
+   against 21.6–27.5ms without**, at 22–28% CPU and LOWER GPU utilisation
+   with the mod — a stalled main thread starving the GPU, not render work.
+   The overlay is **MangoHud**, so this is the Linux/Proton tester.
+   UNKNOWN and worth asking them for: their FireFront VERSION and whether
+   they were hosting or joining. If they are still on the 0.18.0 Discord
+   zip (per item 3 they should be), this is simply the pre-0.18.6 rebuild:
+   0.18.0 calls `BuildCandidateList()` every `SpreadCheckInterval` (0.75s),
+   verified by `git show v0.18.0`. Both 0.18.0 and current gate the sim
+   behind `IsServer()`, so that diagnosis needs them to have been the
+   authority; a pure client points at the VFX path instead.
+   0.19.5 attacks it from both sides regardless — see the changelog. Its
+   CORRECTNESS is verified live, its SAVING is not: get a CapFrameX capture
+   (now installed on the owner's box) of a burn with and without the mod.
+   The spike INTERVAL is the tell — ~0.75s means an old build, ~5s means the
+   cached rebuild 0.19.5 shrank.
 
 ## Operational facts that cost real time — do not relearn
 
