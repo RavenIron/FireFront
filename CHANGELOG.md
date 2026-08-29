@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.19.8
+
+- **Spread stopped testing every burnable in the world against every fire.**
+  A tester's own log finally showed the shape of the problem: hosting on
+  0.19.3 with a maxed fire, they had **2176 spread candidates against 50
+  burning objects and 46 ground cells**, and `SpreadPass` compared every
+  candidate to every burner on each 0.75s cycle. That is roughly a quarter of
+  a million distance checks a cycle, each carrying a type dispatch and a ZDO
+  lookup — and their measured frametime spikes were 101.9-146.3ms, which is
+  where that arithmetic lands.
+
+  Candidates are static — trees and walls do not move — so they are now
+  bucketed into a 16m spatial grid whenever the candidate list is rebuilt, and
+  a burner only examines the cells its own reach touches. Cost follows the
+  size of the fire instead of how much wood is lying around the map.
+  Two smaller wins came with it: the cheap distance check now runs BEFORE the
+  type dispatch and ZDO lookup rather than after, and bucket lists are pooled
+  so re-bucketing does not allocate. Behaviour is unchanged — the same
+  candidates ignite, they are just found without walking the whole world.
+
+  Note for anyone reading the old advice: the earlier guess that affected
+  testers were simply on the pre-0.18.6 build was WRONG. The tester was on
+  0.19.3 and already had every prior performance fix; this loop was the part
+  none of them touched.
+
 ## 0.19.7
 
 - **`fireset lowspec` typed on a client never reached the server.** 0.19.6

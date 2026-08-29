@@ -242,6 +242,116 @@ namespace FireFront.Fire
         // read from the ZDO layer instead; an instance is force-created per
         // actual ignition (ComponentFromZdoid), never per nearby candidate.
         private readonly List<ValheimBridge.ZdoBurnable> _zdoCandidates = new List<ValheimBridge.ZdoBurnable>();
+
+        // --- spatial index over both candidate lists -------------------------
+        //
+        // Spread used to test EVERY candidate against EVERY burner. That is
+        // O(burners x candidates), and a tester's log (2026-08-29, hosting,
+        // 0.19.3) showed what that costs at scale: 2176 candidates against 50
+        // burning objects and 46 ground cells, every 0.75s cycle — roughly a
+        // quarter of a million distance checks a cycle, each carrying an
+        // IsBurnable dispatch and a ZDOIDOf lookup. Their frametime spikes
+        // measured 101.9-146.3ms, which is where that arithmetic lands.
+        //
+        // Candidates are static — trees and walls do not move — so they can be
+        // bucketed by position once per rebuild and queried by area. A burner
+        // then examines only the handful of cells its own reach touches
+        // instead of the whole world list, which makes the cost follow the
+        // fire's size rather than how much wood is lying around the map.
+        //
+        // Cell size is comfortably larger than any spread reach (default 8m)
+        // so a query normally touches 2x2 cells; the query walks whatever span
+        // the radius actually covers, so an unusually large configured radius
+        // still returns correct results, just from more cells.
+        private const float CandidateCellSize = 16f;
+        private readonly Dictionary<long, List<int>> _candidateGrid = new Dictionary<long, List<int>>();
+        private readonly Dictionary<long, List<int>> _zdoCandidateGrid = new Dictionary<long, List<int>>();
+        private readonly List<List<int>> _gridBucketPool = new List<List<int>>();
+        private readonly List<int> _gridQueryScratch = new List<int>();
+
+        private static long CellKeyOf(float x, float z)
+        {
+            int cx = Mathf.FloorToInt(x / CandidateCellSize);
+            int cz = Mathf.FloorToInt(z / CandidateCellSize);
+            return ((long)cx << 32) | (uint)cz;
+        }
+
+        /// <summary>Empties a grid, returning its bucket lists to the pool for reuse.</summary>
+        private void ClearGrid(Dictionary<long, List<int>> grid)
+        {
+            foreach (KeyValuePair<long, List<int>> kv in grid)
+            {
+                kv.Value.Clear();
+                _gridBucketPool.Add(kv.Value);
+            }
+            grid.Clear();
+        }
+
+        private List<int> RentBucket()
+        {
+            int last = _gridBucketPool.Count - 1;
+            if (last < 0) return new List<int>();
+            List<int> bucket = _gridBucketPool[last];
+            _gridBucketPool.RemoveAt(last);
+            return bucket;
+        }
+
+        private void AddToGrid(Dictionary<long, List<int>> grid, long key, int index)
+        {
+            if (!grid.TryGetValue(key, out List<int> bucket))
+            {
+                bucket = RentBucket();
+                grid[key] = bucket;
+            }
+            bucket.Add(index);
+        }
+
+        /// <summary>
+        /// Collects candidate INDICES whose cell overlaps a radius around origin
+        /// into the shared scratch list. Cell membership is coarse, so callers
+        /// still range-check each hit — this only avoids visiting the ones that
+        /// could not possibly be near.
+        /// </summary>
+        private void QueryGrid(Dictionary<long, List<int>> grid, Vector3 origin, float radius)
+        {
+            _gridQueryScratch.Clear();
+            if (grid.Count == 0) return;
+
+            int minX = Mathf.FloorToInt((origin.x - radius) / CandidateCellSize);
+            int maxX = Mathf.FloorToInt((origin.x + radius) / CandidateCellSize);
+            int minZ = Mathf.FloorToInt((origin.z - radius) / CandidateCellSize);
+            int maxZ = Mathf.FloorToInt((origin.z + radius) / CandidateCellSize);
+
+            for (int cx = minX; cx <= maxX; cx++)
+            {
+                for (int cz = minZ; cz <= maxZ; cz++)
+                {
+                    if (grid.TryGetValue(((long)cx << 32) | (uint)cz, out List<int> bucket))
+                        _gridQueryScratch.AddRange(bucket);
+                }
+            }
+        }
+
+        /// <summary>Re-buckets both candidate lists. Called only when they are rebuilt.</summary>
+        private void RebuildCandidateGrids()
+        {
+            ClearGrid(_candidateGrid);
+            ClearGrid(_zdoCandidateGrid);
+
+            for (int i = 0; i < _candidates.Count; i++)
+            {
+                Component c = _candidates[i];
+                if (c == null) continue;
+                Vector3 p = ValheimBridge.PositionOf(c);
+                AddToGrid(_candidateGrid, CellKeyOf(p.x, p.z), i);
+            }
+
+            for (int i = 0; i < _zdoCandidates.Count; i++)
+            {
+                Vector3 p = _zdoCandidates[i].Position;
+                AddToGrid(_zdoCandidateGrid, CellKeyOf(p.x, p.z), i);
+            }
+        }
         private readonly List<GroundCellKey> _groundScratch = new List<GroundCellKey>();
         private readonly List<GroundCellKey> _exhaustedScratch = new List<GroundCellKey>();
 
@@ -2017,6 +2127,7 @@ namespace FireFront.Fire
             {
                 _nextCandidateRebuild = Time.time + CandidateRebuildSeconds;
                 BuildCandidateList();
+                RebuildCandidateGrids();
             }
             LogSpreadCandidateDiagnostic(objRadiusSqr);
 
@@ -2046,10 +2157,18 @@ namespace FireFront.Fire
                 if (Time.time - burnerState.IgnitedAt < maturitySeconds) continue;
                 Vector3 origin = burnerState.Position;
 
-                for (int i = 0; i < _candidates.Count; i++)
+                // Grid query instead of the whole candidate list — see the
+                // spatial index for the measurement that motivated it. The
+                // cheap position check now runs FIRST too: it was previously
+                // last, so every candidate in the world paid for an IsBurnable
+                // dispatch and a ZDOIDOf lookup before being rejected on
+                // distance.
+                QueryGrid(_candidateGrid, origin, effectiveSpreadRadius);
+                for (int q = 0; q < _gridQueryScratch.Count; q++)
                 {
-                    Component candidate = _candidates[i];
+                    Component candidate = _candidates[_gridQueryScratch[q]];
                     if (candidate == null) continue;
+                    if ((ValheimBridge.PositionOf(candidate) - origin).sqrMagnitude > objRadiusSqr) continue;
                     if (!ValheimBridge.IsBurnable(candidate)) continue;
 
                     ZDOID? candidateId = ValheimBridge.ZDOIDOf(candidate);
@@ -2057,13 +2176,10 @@ namespace FireFront.Fire
                     if (candidateId.Value.Equals(burnerId)) continue;
                     if (_burning.ContainsKey(candidateId.Value)) continue;
 
-                    if ((ValheimBridge.PositionOf(candidate) - origin).sqrMagnitude <= objRadiusSqr)
-                    {
-                        TryIgnite(candidate);
-                    }
+                    TryIgnite(candidate);
                 }
 
-                IgniteZdoCandidatesNear(origin, objRadiusSqr);
+                IgniteZdoCandidatesNear(origin, effectiveSpreadRadius);
                 IgniteGroundNear(origin, groundRadius);
             }
 
@@ -2079,23 +2195,23 @@ namespace FireFront.Fire
 
                     IgniteAdjacentGroundCells(key, y);
 
-                    for (int i = 0; i < _candidates.Count; i++)
+                    QueryGrid(_candidateGrid, origin, groundRadius);
+                    float groundRadiusSqr = groundRadius * groundRadius;
+                    for (int q = 0; q < _gridQueryScratch.Count; q++)
                     {
-                        Component candidate = _candidates[i];
+                        Component candidate = _candidates[_gridQueryScratch[q]];
                         if (candidate == null) continue;
+                        if ((ValheimBridge.PositionOf(candidate) - origin).sqrMagnitude > groundRadiusSqr) continue;
                         if (!ValheimBridge.IsBurnable(candidate)) continue;
 
                         ZDOID? candidateId = ValheimBridge.ZDOIDOf(candidate);
                         if (!candidateId.HasValue) continue;
                         if (_burning.ContainsKey(candidateId.Value)) continue;
 
-                        if ((ValheimBridge.PositionOf(candidate) - origin).sqrMagnitude <= groundRadius * groundRadius)
-                        {
-                            TryIgnite(candidate);
-                        }
+                        TryIgnite(candidate);
                     }
 
-                    IgniteZdoCandidatesNear(origin, groundRadius * groundRadius);
+                    IgniteZdoCandidatesNear(origin, groundRadius);
                 }
             }
         }
@@ -2202,17 +2318,19 @@ namespace FireFront.Fire
         /// is created; TryIgnite's own dedupe covers the rest (including an
         /// object the instance loop above already ignited this cycle).
         /// </summary>
-        private void IgniteZdoCandidatesNear(Vector3 origin, float radiusSqr)
+        private void IgniteZdoCandidatesNear(Vector3 origin, float radius)
         {
             if (_zdoCandidates.Count == 0) return;
 
             int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
+            float radiusSqr = radius * radius;
 
-            for (int i = 0; i < _zdoCandidates.Count; i++)
+            QueryGrid(_zdoCandidateGrid, origin, radius);
+            for (int q = 0; q < _gridQueryScratch.Count; q++)
             {
                 if (_burning.Count >= effectiveMax && _queue.Count >= _queue.Capacity) return;
 
-                ValheimBridge.ZdoBurnable candidate = _zdoCandidates[i];
+                ValheimBridge.ZdoBurnable candidate = _zdoCandidates[_gridQueryScratch[q]];
                 if ((candidate.Position - origin).sqrMagnitude > radiusSqr) continue;
                 if (_burning.ContainsKey(candidate.Id)) continue;
                 if (_queue.Contains(candidate.Id)) continue;
