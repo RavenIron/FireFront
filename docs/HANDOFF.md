@@ -1,23 +1,26 @@
-# FireFront — session handoff (2026-08-28, updated same day)
+# FireFront — session handoff (updated 2026-08-29)
 
 Resume point for the next working session. Read this before touching anything;
 the memory notes in the assistant's store point here.
 
 ## Where everything stands
 
-- **Repo**: `main` at **0.19.3** (regrowth dedupe + startfire headless fix —
-  see below). 0.19.1 (tag `v0.19.1`) is the last state pushed to
-  github.com/RavenIron/FireFront; 0.19.2/0.19.3 are local commits, unpushed.
-- **Server AND every Gale profile are at 0.19.7, SHA256-verified identical
-  to the Release build** (boot log: `FireFront 0.19.7 loaded`, all 8 RPCs).
-  See the profile note below — the owner plays `Default`.
+- **Repo**: `main` at **0.19.8**, pushed to github.com/RavenIron/FireFront,
+  every version tagged through `v0.19.8`.
+- **Deployed builds are MIXED as of 2026-08-29** — dedicated server on
+  0.19.7, `Default` profile on 0.19.8, `raveniron` on an unaccounted-for
+  hash. The game and server were running and locked their DLLs when 0.19.8
+  went out. Redeploy and hash-verify before drawing any conclusion from a
+  log. See the profile note below — the owner plays `Default`.
 - **A "version string" grep of the DLL is NOT a version check.** FireFront's
   own log messages contain literals like `0.17.2` and `0.18.7`, so scanning a
   DLL for version-shaped strings returns a list, not an answer, and the
   newest entry is not necessarily the build. Hash against
   `bin\Release\net472\FireFront.dll`, or read the boot log line.
-- **Testers**: still on the **0.18.0** zip from the original Discord post.
-  `dist\RavenIron-FireFront-0.19.2.zip` is built and version-guard-checked.
+- **Testers**: at least one is on **0.19.3** (see item 4 — the log proved it),
+  others may still be on the **0.18.0** Discord zip.
+  `dist\RavenIron-FireFront-0.19.8.zip` is built and version-guard-checked,
+  but do NOT ship it before item 4's burn test.
   **Owner's call 2026-08-28: no Discord post needed** — the regenerated
   split in `dist\DISCORD_POST_READY.txt` exists but is not to be shipped
   unless the owner asks.
@@ -60,24 +63,33 @@ the memory notes in the assistant's store point here.
 3. **Ship to testers** — ON HOLD, owner said no Discord post needed
    (2026-08-28). The zip stays ready in dist\ if that changes.
 
-4. **The frametime spike is BACK on a tester's machine — 0.19.5 is the
-   answer, unmeasured.** A tester capture (2026-08-29, mod vs no-mod, same
-   scene, same box) showed max frametime **101.9–146.3ms with FireFront
-   against 21.6–27.5ms without**, at 22–28% CPU and LOWER GPU utilisation
-   with the mod — a stalled main thread starving the GPU, not render work.
-   The overlay is **MangoHud**, so this is the Linux/Proton tester.
-   UNKNOWN and worth asking them for: their FireFront VERSION and whether
-   they were hosting or joining. If they are still on the 0.18.0 Discord
-   zip (per item 3 they should be), this is simply the pre-0.18.6 rebuild:
-   0.18.0 calls `BuildCandidateList()` every `SpreadCheckInterval` (0.75s),
-   verified by `git show v0.18.0`. Both 0.18.0 and current gate the sim
-   behind `IsServer()`, so that diagnosis needs them to have been the
-   authority; a pure client points at the VFX path instead.
-   0.19.5 attacks it from both sides regardless — see the changelog. Its
-   CORRECTNESS is verified live, its SAVING is not: get a CapFrameX capture
-   (now installed on the owner's box) of a burn with and without the mod.
-   The spike INTERVAL is the tell — ~0.75s means an old build, ~5s means the
-   cached rebuild 0.19.5 shrank.
+4. **The tester frametime spike — DIAGNOSED, fix built, ONE TEST OUTSTANDING.**
+   Resolved 2026-08-29 from the tester's own Player.log. Facts, replacing the
+   earlier guesswork:
+   - They run **0.19.3, hosting** (`IsServer=True`) — NOT the 0.18.0 Discord
+     zip. The earlier "they're just on an old build" theory was WRONG; they
+     already had every prior performance fix.
+   - Their log: `total candidates (pieces+trees+logs)=2176` (only 131 of them
+     pieces), `burning 50/50, queued 20/20, ground 46/50`. `SpreadPass`
+     compared every candidate to every burner each 0.75s cycle — about a
+     quarter of a million distance checks per cycle, each with a type
+     dispatch and a ZDO lookup. Their measured spikes: 101.9-146.3ms. The
+     arithmetic lands exactly on the symptom.
+   - **0.19.8 is the fix**: a 16m spatial grid over both candidate lists, so a
+     burner queries only the cells its reach touches. 0.19.5 had already cut
+     ~5x of it by moving trees out of the instance list.
+   **OUTSTANDING: 0.19.8 has never run in a game.** It is pushed, tagged and
+   packaged, and it is the only thing shipped that day without live
+   verification — and the riskiest, since it rewrites how spread finds
+   targets. A mistake shows up as fire that burns but never spreads, which no
+   compiler or packaging guard catches. DO NOT hand that zip to a tester
+   before one burn: `startfire 10` near real trees, confirm the front MOVES
+   and `zdoCandidates` stays non-zero. Owner deferred this test to a later
+   session (they were mid-session on their own server).
+   Also pending: a clean redeploy. As of that session the dedicated server was
+   on 0.19.7, the `Default` profile on 0.19.8, and `raveniron` on an
+   unaccounted-for hash — the game and server were running and locked their
+   DLLs. Hash-verify against `bin\Release\net472\FireFront.dll` after copying.
 
 ## Operational facts that cost real time — do not relearn
 
