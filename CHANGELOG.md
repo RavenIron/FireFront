@@ -13,6 +13,22 @@
   saying that adding a case without a map entry produces exactly this silent
   disagreement.
 
+  Verified live afterwards, server-side, against a burning front — three
+  consecutive status lines, with `fireset (remote from ...)` in the server log
+  proving the command crossed the wire:
+
+  ```
+  burning 17/50, ground 42/50, vfxcap 30, dmgcap 50, interval 0.75s, lowspec False
+  burning 16/20, ground 18/25, vfxcap 10, dmgcap 20, interval 2s,    lowspec True
+  burning 17/50, ground 50/50, vfxcap 30, dmgcap 50, interval 0.75s, lowspec False
+  ```
+
+  Every cap dropped and every one came back. Ground cells fell 42 → 18 while
+  the preset was on, so the simulation actually shed load rather than merely
+  reporting smaller numbers, and the third line is the design's real claim
+  observed: turning it off restored the configured values exactly, because
+  the preset resolves at read time and never wrote to the config at all.
+
 ## 0.19.6
 
 - **`LowSpecPreset` — one switch for a machine that struggles.** Instead of

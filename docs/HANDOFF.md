@@ -8,10 +8,14 @@ the memory notes in the assistant's store point here.
 - **Repo**: `main` at **0.19.3** (regrowth dedupe + startfire headless fix —
   see below). 0.19.1 (tag `v0.19.1`) is the last state pushed to
   github.com/RavenIron/FireFront; 0.19.2/0.19.3 are local commits, unpushed.
-- **Server AND client are both at 0.19.3, confirmed by boot log lines**
-  (`FireFront 0.19.3 loaded`, all 8 RPCs, RW bridging against 0.19.3).
-  Client is the Gale profile **`raveniron`** — NOT `Default`; the profile
-  also carries Ragnarok's Wrath and Server Devcommands.
+- **Server AND every Gale profile are at 0.19.7, SHA256-verified identical
+  to the Release build** (boot log: `FireFront 0.19.7 loaded`, all 8 RPCs).
+  See the profile note below — the owner plays `Default`.
+- **A "version string" grep of the DLL is NOT a version check.** FireFront's
+  own log messages contain literals like `0.17.2` and `0.18.7`, so scanning a
+  DLL for version-shaped strings returns a list, not an answer, and the
+  newest entry is not necessarily the build. Hash against
+  `bin\Release\net472\FireFront.dll`, or read the boot log line.
 - **Testers**: still on the **0.18.0** zip from the original Discord post.
   `dist\RavenIron-FireFront-0.19.2.zip` is built and version-guard-checked.
   **Owner's call 2026-08-28: no Discord post needed** — the regenerated
@@ -77,13 +81,23 @@ the memory notes in the assistant's store point here.
 
 ## Operational facts that cost real time — do not relearn
 
+- **The owner plays on the `Default` Gale profile, NOT `raveniron`.**
+  Corrected 2026-08-29: an earlier note here said `raveniron`, and a whole
+  session's client deploys went to the wrong profile before the mistake
+  showed up (it was masked because every profile ended up byte-identical
+  anyway — SHA256-checked). `Default` is the one whose config file gets
+  written during play; it carries FireFront, Undertow, LetItGrow, Jotunn and
+  ConfigurationManager. `raveniron` (FireFront + Ragnarok's Wrath + Server
+  Devcommands) matches the dedicated server's plugin set. When in doubt, the
+  profile whose `BepInEx\config\com.raveniron.firefront.cfg` has the newest
+  mtime is the one that was just played.
 - **Client deploys go through Gale, never hand-copies to
   `plugins\FireFront\`.** A hand-copied folder next to Gale's managed
   `RavenIronStudios-FireFront\` folder means two DLLs with one GUID and
   BepInEx loads whichever it finds first — this caused days of "wrong version
   loaded" chaos. Correct paths: Gale cache
   `%APPDATA%\com.kesomannen.gale\cache\RavenIronStudios-FireFront\<ver>\` and
-  profile `...\profiles\raveniron\BepInEx\plugins\RavenIronStudios-FireFront\`.
+  profile `...\profiles\<profile>\BepInEx\plugins\RavenIronStudios-FireFront\`.
   Gale's enable/disable state lives in its SQLite db (`data.sqlite3`) — don't
   edit it; worst case the user clicks enable in Gale's UI. `.old` suffixes on
   files = Gale's "disabled" convention.
