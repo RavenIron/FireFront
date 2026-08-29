@@ -46,6 +46,26 @@ namespace FireFront.Patches
         private static readonly FieldInfo ItemsField = typeof(ObjectDB).GetField("m_items", AnyInstance);
         private static readonly FieldInfo RecipesField = typeof(ObjectDB).GetField("m_recipes", AnyInstance);
 
+        /// <summary>
+        /// True once this ObjectDB is the real, fully populated one rather than the
+        /// bootstrap instance the first Awake fires on.
+        /// </summary>
+        /// <remarks>
+        /// MEASURED on a dedicated server 2026-08-28, do not "simplify" to a count:
+        /// the bootstrap DB holds exactly ONE item and no staples (wood and resin
+        /// both absent); the real DB that arrives moments later holds 1089. A first
+        /// attempt at this fix tested items.Count > 0 and still emitted the false
+        /// warning on every single boot, because one is greater than zero. The
+        /// staple lookup is the signal that actually separates them; the count is
+        /// only a backstop in case Wood is ever renamed, and a wrong answer here
+        /// costs a missing diagnostic, never a broken item.
+        /// </remarks>
+        private static bool DbIsFullyLoaded(ObjectDB db)
+        {
+            if (db.GetItemPrefab("Wood") != null) return true;
+            return ItemsField?.GetValue(db) is List<GameObject> items && items.Count > 100;
+        }
+
         /// <summary>Clone the donor once. Null (with one log) if it can't be built.</summary>
         public static GameObject EnsureCreated(ObjectDB db)
         {
@@ -55,10 +75,19 @@ namespace FireFront.Patches
             GameObject donor = db.GetItemPrefab("BombOoze");
             if (donor == null)
             {
-                if (!_failureLogged)
+                // The FIRST Awake fires on the bootstrap ObjectDB, which does not yet
+                // carry the game's items — the real one arrives in a later Awake/
+                // CopyOtherDB, which is exactly what the idempotent retry is for.
+                // Warning unconditionally here announced "Dousing Bomb unavailable"
+                // on EVERY start, client and server, four log lines before the item
+                // was in fact created (measured 2026-08-28 across five dedicated-
+                // server boots) — and it spent _failureLogged on a non-event, so a
+                // genuine absence could never be reported afterwards. Only a fully
+                // loaded ObjectDB missing this donor is a real fault.
+                if (!_failureLogged && DbIsFullyLoaded(db))
                 {
                     _failureLogged = true;
-                    FireLogger.Warn("[DOUSING] donor prefab 'BombOoze' not found in ObjectDB — Dousing Bomb unavailable.");
+                    FireLogger.Warn("[DOUSING] donor prefab 'BombOoze' not found in a fully loaded ObjectDB — Dousing Bomb unavailable.");
                 }
                 return null;
             }

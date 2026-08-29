@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.19.4
+
+- **The Dousing Bomb was never missing — the warning was wrong.** Every start,
+  client and server alike, logged `donor prefab 'BombOoze' not found in ObjectDB —
+  Dousing Bomb unavailable`, then created the bomb successfully four log lines
+  later. Registration is hooked to both `ObjectDB.Awake` and `CopyOtherDB` precisely
+  because the first Awake fires on the bootstrap ObjectDB, before the game's items
+  exist; the retry was always working. Only the logging was wrong, and wrong in the
+  worst direction — it told every user a feature was broken when it was not, and it
+  spent the one-shot `_failureLogged` flag on a non-event, so a *genuine* absence
+  could never have been reported afterwards. The warning now fires only when a fully
+  loaded ObjectDB is missing the donor, which is the real fault it was meant to
+  describe. No behaviour change: the bomb crafted before this and crafts now.
+
 ## 0.19.3
 
 - **`startfire` actually finds targets on a dedicated server.** Caught live
