@@ -1,4 +1,4 @@
-🔥 **FireFront — Tester Build v0.19.2**
+🔥 **FireFront — Tester Build v0.19.6**
 
 Fire that actually spreads. Torch a wall and it can take the whole build with it, jump to the treeline, and crawl across open ground to get there — not just "this one piece is on fire," an actual moving front.
 
@@ -34,6 +34,11 @@ Fire that actually spreads. Torch a wall and it can take the whole build with it
 
 **Heads-up if updating from an older build:** update server and client together — a mixed-version pair (0.17.3 with anything older) means clicking `ignite` from a client silently does nothing.
 
+**Struggling machine? Try `fireset lowspec true`**
+New in 0.19.6, and the first thing to reach for if big fires cost you frames. One switch: fewer things burning at once, fewer fire visuals, no scorch decals, and a slower spread tick. Fire still spreads and still burns your base down — there's just less happening simultaneously. It doesn't touch your own settings (anything you've already set lower is kept, and turning it off puts everything back), and `firestatus` shows you exactly what's in force. Also settable as `LowSpecPreset` in the config file if you'd rather not use the console.
+
+If you've been running an older build and big fires stuttered, **update first** — 0.18.6, 0.18.7 and 0.19.5 each removed a separate cause of that, and the newest one cut out a full-scene scan whose cost grew with how much stuff was lying around your world.
+
 **What to expect / known limits**
 • The fire visual is homemade, not a vanilla asset — it'll look like fire, just not *exactly* like Valheim's own fire
 • Default settings are tuned aggressive for testing — expect fire to spread fast and hungrily unless you dial it down yourself
@@ -50,7 +55,7 @@ clearfires              — nuke every active fire instantly
 firedebug               — toggle verbose fire logging
 fireset <key> <value>   — live-tune settings, no restart needed (applies on the server no matter where you type it)
 ```
-Full list of tunable `fireset` keys: `burnduration`, `firematurity`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `burnbuildings`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `douseimmunity`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `dousingradius`, `persistfires`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `enabled`
+Full list of tunable `fireset` keys: `burnduration`, `firematurity`, `spreadradius`, `maxburning`, `queuesize`, `spreadinterval`, `trees`, `burnbuildings`, `vfx`, `procedural`, `groundenabled`, `groundcellsize`, `groundradius`, `groundburnduration`, `groundmax`, `groundvfxmax`, `grounddamagemax`, `firehurts`, `firehurtsplayeronly`, `firehurtsradius`, `firedamage`, `firetickinterval`, `extinguishradius`, `douseimmunity`, `rainsuppress`, `rainmultiplier`, `scorchmarks`, `scorchlifetime`, `dirtpaint`, `dirtpaintradius`, `rampenabled`, `rampduration`, `rampstart`, `exhaustionenabled`, `fuelregrow`, `windbias`, `windupwindchance`, `windinfluence`, `dousingradius`, `persistfires`, `firebreaks`, `treeregrowth`, `treeregrowthseconds`, `groundleashenabled`, `groundleashdistance`, `lowspec`, `enabled`
 
 Wind ones worth playing with: `fireset windinfluence 0` ignores wind entirely (old-style even spread), `1` is full effect (the default). `firestatus` shows the live wind strength the fire is currently feeling.
 

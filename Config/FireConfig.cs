@@ -60,12 +60,70 @@ namespace FireFront.Config
         public static ConfigEntry<bool> PersistFiresEnabled;
         public static ConfigEntry<bool> GroundMaxSpreadDistanceEnabled;
         public static ConfigEntry<float> GroundMaxSpreadDistance;
+        public static ConfigEntry<bool> LowSpecPreset;
+
+        // --- Low-spec preset -------------------------------------------------
+        //
+        // One switch instead of eight, for a player whose machine struggles.
+        //
+        // It NEVER writes to the config file. Every setting below stays exactly
+        // as the player wrote it; these accessors just return a cheaper number
+        // while the preset is on, so switching it back off restores their own
+        // values with nothing lost. That matters here specifically: BepInEx
+        // persists whatever is in a ConfigEntry, so a preset implemented by
+        // assigning values would silently overwrite the player's settings and
+        // could never be undone.
+        //
+        // It also only ever makes things CHEAPER. Anyone who has already tuned
+        // below these numbers keeps their lower value — the preset is a ceiling
+        // on cost, not an instruction to raise anything.
+
+        private const int LowSpecMaxConcurrentBurning = 20;
+        private const int LowSpecGroundMaxConcurrent = 25;
+        private const int LowSpecGroundVfxMaxConcurrent = 10;
+        private const int LowSpecGroundDamageMaxConcurrent = 20;
+        private const float LowSpecSpreadCheckInterval = 2f;
+
+        private static bool LowSpec => LowSpecPreset != null && LowSpecPreset.Value;
+
+        public static int EffectiveMaxConcurrentBurning =>
+            LowSpec ? Mathf.Min(MaxConcurrentBurning.Value, LowSpecMaxConcurrentBurning) : MaxConcurrentBurning.Value;
+
+        public static int EffectiveGroundMaxConcurrent =>
+            LowSpec ? Mathf.Min(GroundMaxConcurrent.Value, LowSpecGroundMaxConcurrent) : GroundMaxConcurrent.Value;
+
+        public static int EffectiveGroundVfxMaxConcurrent =>
+            LowSpec ? Mathf.Min(GroundVfxMaxConcurrent.Value, LowSpecGroundVfxMaxConcurrent) : GroundVfxMaxConcurrent.Value;
+
+        public static int EffectiveGroundDamageMaxConcurrent =>
+            LowSpec ? Mathf.Min(GroundDamageMaxConcurrent.Value, LowSpecGroundDamageMaxConcurrent) : GroundDamageMaxConcurrent.Value;
+
+        /// <summary>Scorch decals are cosmetic; the preset drops them entirely.</summary>
+        public static bool EffectiveScorchMarksEnabled => !LowSpec && ScorchMarksEnabled.Value;
+
+        /// <summary>
+        /// The odd one out: a LONGER interval is the cheaper one, so this takes
+        /// the max rather than the min. Fewer spread cycles per second means
+        /// fewer candidate rebuilds, which is the dominant per-cycle cost.
+        /// </summary>
+        public static float EffectiveSpreadCheckInterval =>
+            LowSpec ? Mathf.Max(SpreadCheckInterval.Value, LowSpecSpreadCheckInterval) : SpreadCheckInterval.Value;
 
         public static void Bind(ConfigFile config)
         {
             Enabled = config.Bind(
                 "General", "Enabled", true,
                 "Master switch. When false, no burn timers run and no spread occurs.");
+
+            LowSpecPreset = config.Bind(
+                "General", "LowSpecPreset", false,
+                "One switch for a machine that struggles with big fires. Caps burning pieces at " +
+                "20, ground cells at 25, ground fire visuals at 10 and damage zones at 20, turns " +
+                "off scorch decals, and slows the spread cycle to at least 2s. Fire still spreads " +
+                "and still burns things down — there is just less of it happening at once. " +
+                "Your own settings are NOT overwritten: this only ever makes things cheaper, " +
+                "anything you already set lower is kept, and turning it off restores everything. " +
+                "Toggle live with 'fireset lowspec true'.");
 
             BurnDurationSeconds = config.Bind(
                 "Fire", "BurnDurationSeconds", 240f,

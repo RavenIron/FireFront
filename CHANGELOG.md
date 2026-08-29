@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.19.6
+
+- **`LowSpecPreset` — one switch for a machine that struggles.** Instead of
+  learning eight settings, set `LowSpecPreset = true` (or `fireset lowspec
+  true`, live, no restart). It caps burning pieces at 20, ground cells at 25,
+  ground-fire visuals at 10 and damage zones at 20, drops scorch decals, and
+  slows the spread cycle to at least 2s. Fire still spreads and still burns
+  things down — there is simply less of it at once.
+
+  Two properties worth stating, because both are easy to get wrong:
+  - **It never writes to your config.** The preset resolves at read time, so
+    your own values are untouched and switching it back off restores them
+    exactly. Implemented by assigning values instead, BepInEx would have
+    persisted the preset's numbers over the player's and there would be no
+    way back.
+  - **It only ever makes things cheaper.** Every cap takes the *lower* of
+    yours and the preset's, so anyone already tuned below these keeps their
+    own number; the spread interval takes the *higher*, since a longer
+    interval is the cheap direction. The preset is a ceiling on cost, never
+    an instruction to raise anything.
+
+  `firestatus` reports the values actually in force rather than the
+  configured ones, plus a `lowspec` flag, so the line can never disagree with
+  what the simulation is enforcing.
+
 ## 0.19.5
 
 - **Cut the size of the periodic frametime spike, not just how often it

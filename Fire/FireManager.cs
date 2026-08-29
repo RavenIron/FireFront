@@ -355,7 +355,7 @@ namespace FireFront.Fire
 
             if (!FireConfig.Enabled.Value) return;
             if (Time.time < _nextCycle) return;
-            _nextCycle = Time.time + FireConfig.SpreadCheckInterval.Value;
+            _nextCycle = Time.time + FireConfig.EffectiveSpreadCheckInterval;
 
             MaybePersistFires();
             PruneStale();
@@ -618,7 +618,7 @@ namespace FireFront.Fire
             if (_queue.Contains(id)) return;
             if (_dousedUntil.TryGetValue(id, out float wetUntil) && Time.time < wetUntil) return; // soaked — see _dousedUntil
 
-            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.MaxConcurrentBurning.Value * GetRampFraction()));
+            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
 
             if (_burning.Count < effectiveMax)
             {
@@ -923,13 +923,19 @@ namespace FireFront.Fire
 
         public string StatusLine()
         {
-            return $"FireFront: burning {_burning.Count}/{FireConfig.MaxConcurrentBurning.Value}, " +
+            // Caps and interval print their EFFECTIVE values so this line never
+            // disagrees with what the simulation is actually enforcing — with
+            // the low-spec preset on, the configured numbers are not the ones
+            // in force, and a status line that reported them would send someone
+            // hunting a cap that isn't the real one.
+            return $"FireFront: burning {_burning.Count}/{FireConfig.EffectiveMaxConcurrentBurning}, " +
                    $"queued {_queue.Count}/{_queue.Capacity}, " +
-                   $"ground {_groundBurning.Count}/{FireConfig.GroundMaxConcurrent.Value} (enabled {FireConfig.GroundSpreadEnabled.Value}, vfxcap {FireConfig.GroundVfxMaxConcurrent.Value}, dmgcap {FireConfig.GroundDamageMaxConcurrent.Value}, raining {ValheimBridge.IsRaining()}), " +
+                   $"ground {_groundBurning.Count}/{FireConfig.EffectiveGroundMaxConcurrent} (enabled {FireConfig.GroundSpreadEnabled.Value}, vfxcap {FireConfig.EffectiveGroundVfxMaxConcurrent}, dmgcap {FireConfig.EffectiveGroundDamageMaxConcurrent}, raining {ValheimBridge.IsRaining()}), " +
                    $"burn {FireConfig.BurnDurationSeconds.Value}s (maturity {(FireConfig.SpreadMaturityFraction.Value * 100f):F0}%), " +
                    $"radius {FireConfig.SpreadRadius.Value}m, " +
                    $"groundradius {FireConfig.GroundSpreadRadius.Value}m, " +
-                   $"interval {FireConfig.SpreadCheckInterval.Value}s, " +
+                   $"interval {FireConfig.EffectiveSpreadCheckInterval}s, " +
+                   $"lowspec {FireConfig.LowSpecPreset.Value}, " +
                    $"trees {FireConfig.BurnTreesAndLogs.Value}, " +
                    $"burnbuildings {FireConfig.BurnPlayerBuildings.Value}, " +
                    $"vfx '{FireConfig.VfxPrefabName.Value}', procedural {FireConfig.UseProceduralVfx.Value}, " +
@@ -1180,7 +1186,7 @@ namespace FireFront.Fire
                 if ((approxCenter - _fireOrigin.Value).sqrMagnitude > maxDist * maxDist) return;
             }
 
-            int effectiveGroundMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.GroundMaxConcurrent.Value * GetRampFraction()));
+            int effectiveGroundMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveGroundMaxConcurrent * GetRampFraction()));
             if (_groundBurning.Count >= effectiveGroundMax) return; // silent drop, natural retry next cycle
 
             if (_fireStartTime < 0f) _fireStartTime = Time.time;
@@ -1235,7 +1241,7 @@ namespace FireFront.Fire
             // Overall cap on tracked ground effect objects (visual and/or damage-only
             // combined) — bounded by the higher of the two per-purpose caps, since a
             // damage-only object is cheap (just a polling FireBurnZone, no particles).
-            int overallCap = Mathf.Max(FireConfig.GroundVfxMaxConcurrent.Value, FireConfig.GroundDamageMaxConcurrent.Value);
+            int overallCap = Mathf.Max(FireConfig.EffectiveGroundVfxMaxConcurrent, FireConfig.EffectiveGroundDamageMaxConcurrent);
             if (_groundVfx.Count >= overallCap) return;
 
             // Visual has its OWN sub-cap, checked independently — this used to share
@@ -1250,7 +1256,7 @@ namespace FireFront.Fire
                 {
                     if (go != null && go.GetComponent<ParticleSystem>() != null) visualCount++;
                 }
-                if (visualCount >= FireConfig.GroundVfxMaxConcurrent.Value) wantVisual = false;
+                if (visualCount >= FireConfig.EffectiveGroundVfxMaxConcurrent) wantVisual = false;
             }
 
             // Damage gets its own independent check against its own (much higher) cap.
@@ -1261,7 +1267,7 @@ namespace FireFront.Fire
                 {
                     if (go != null && go.GetComponent<FireBurnZone>() != null) damageCount++;
                 }
-                if (damageCount >= FireConfig.GroundDamageMaxConcurrent.Value) wantDamage = false;
+                if (damageCount >= FireConfig.EffectiveGroundDamageMaxConcurrent) wantDamage = false;
             }
 
             if (!wantVisual && !wantDamage) return;
@@ -1604,7 +1610,7 @@ namespace FireFront.Fire
 
         private void PromoteFromQueue()
         {
-            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.MaxConcurrentBurning.Value * GetRampFraction()));
+            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
             while (_burning.Count < effectiveMax)
             {
                 ZDOID next = _queue.DequeueNextValid();
@@ -1921,7 +1927,7 @@ namespace FireFront.Fire
                 _groundPainted.Add(key);
             }
 
-            if (!FireConfig.ScorchMarksEnabled.Value) return;
+            if (!FireConfig.EffectiveScorchMarksEnabled) return;
             float size = FireConfig.GroundCellSize.Value * 1.5f;
             ValheimBridge.SpawnScorchMark(position, size, FireConfig.ScorchMarkLifetimeSeconds.Value);
         }
@@ -2200,7 +2206,7 @@ namespace FireFront.Fire
         {
             if (_zdoCandidates.Count == 0) return;
 
-            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.MaxConcurrentBurning.Value * GetRampFraction()));
+            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
 
             for (int i = 0; i < _zdoCandidates.Count; i++)
             {
