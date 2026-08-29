@@ -44,6 +44,7 @@ namespace FireFront.Fire
     {
         public float ExpireAt;
         public float Y;
+        public int EventId;   // which fire event this cell belongs to (0 = unassigned/legacy)
     }
 
     public class FireManager : MonoBehaviour
@@ -69,6 +70,7 @@ namespace FireFront.Fire
             public Vector3 Position;
             public string PrefabName;
             public int KillAttempts; // bounded retry if resolving a live Component at expiry fails
+            public int EventId;      // which fire event this burner belongs to (0 = unassigned/legacy)
         }
 
         private readonly Dictionary<ZDOID, BurningState> _burning = new Dictionary<ZDOID, BurningState>();
@@ -366,6 +368,178 @@ namespace FireFront.Fire
         // GroundMaxSpreadDistance's config description.
         private Vector3? _fireOrigin;
 
+        // --- fire events -----------------------------------------------------
+        //
+        // A fire event is one blaze: its own origin, its own ramp, its own
+        // arsonist. Until this was added, all of that was GLOBAL — one
+        // _fireOrigin, one _fireStartTime, one igniter — with three
+        // consequences, the first of them severe:
+        //
+        //  1. The candidate sweep centred on the FIRST fire's origin and reached
+        //     only a bounded radius, so a second fire lit beyond that radius got
+        //     ZERO candidates and could not spread AT ALL. Light a fire, travel
+        //     500m, light another: the second just sits there. Reported from
+        //     play 2026-08-29 ("tp'd far away... nothing propagates") and then
+        //     confirmed in the code.
+        //  2. MaxConcurrentBurning was one global budget, so the first big fire
+        //     starved every later one until it burned out.
+        //  3. A later fire inherited the first's ramp progress and its arsonist,
+        //     so a natural fire could be billed to whoever lit something else
+        //     across the map.
+        //
+        // Events form by proximity: an ignition joins the nearest event whose
+        // origin is within EventJoinRadius, else it starts its own. An event
+        // dies when its last burner and last ground cell go out.
+        private class FireEvent
+        {
+            public int Id;
+            public Vector3 Origin;
+            public float StartTime;        // ramp clock for THIS blaze
+            public float RestoredRampAge;  // carried across a restart
+            public long IgniterPlayerId;   // 0 = natural/unknown
+        }
+
+        private readonly Dictionary<int, FireEvent> _events = new Dictionary<int, FireEvent>();
+        private readonly HashSet<int> _liveEventIds = new HashSet<int>();
+        private readonly List<int> _deadEventScratch = new List<int>();
+        private readonly List<(int, Vector3)> _sweepCenters = new List<(int, Vector3)>();
+        private readonly List<ValheimBridge.ZdoBurnable> _zdoSweepScratch = new List<ValheimBridge.ZdoBurnable>();
+        private int _nextEventId = 1;
+
+        // How close an ignition must be to an existing event to count as the
+        // same blaze. Anything a fire could plausibly have reached on its own
+        // should join it rather than become a rival with its own budget; past
+        // that it is genuinely a separate fire. Ground leash (how far one fire
+        // travels) plus a spread reach of slack.
+        private float EventJoinRadius =>
+            (FireConfig.GroundMaxSpreadDistanceEnabled.Value ? FireConfig.GroundMaxSpreadDistance.Value : 100f)
+            + FireConfig.SpreadRadius.Value + 8f;
+
+        /// <summary>
+        /// The event this position belongs to, creating one if nothing is near
+        /// enough. igniterPlayerId is recorded only when a NEW event is born —
+        /// joining an existing blaze never rewrites its culprit.
+        /// </summary>
+        private int EventForPosition(Vector3 pos, long igniterPlayerId)
+        {
+            float bestSqr = EventJoinRadius * EventJoinRadius;
+            int best = 0;
+            foreach (FireEvent ev in _events.Values)
+            {
+                float d = (ev.Origin - pos).sqrMagnitude;
+                if (d <= bestSqr) { bestSqr = d; best = ev.Id; }
+            }
+            if (best != 0) return best;
+
+            var created = new FireEvent
+            {
+                Id = _nextEventId++,
+                Origin = pos,
+                StartTime = Time.time,
+                IgniterPlayerId = igniterPlayerId,
+            };
+            _events[created.Id] = created;
+            _nextCandidateRebuild = 0f; // new blaze, new ground — resweep now
+            FireLogger.Debug($"[EVENT] event {created.Id} born at {pos} (igniter {igniterPlayerId}); {_events.Count} active.");
+            return created.Id;
+        }
+
+        private FireEvent EventById(int id)
+        {
+            return id != 0 && _events.TryGetValue(id, out FireEvent ev) ? ev : null;
+        }
+
+        /// <summary>
+        /// Gives an event to anything burning without one. Two sources of
+        /// orphans: state restored from the persistence sidecar (which predates
+        /// events and stores no id), and anything lit before this ran. Left
+        /// alone they would sit at EventId 0 forever — matching no event, given
+        /// no sweep, never spreading, which is the very bug events exist to fix.
+        /// Clustering by position means one restored blaze comes back as one
+        /// event, and two far apart come back as two.
+        /// </summary>
+        private void AdoptOrphanedFires()
+        {
+            _orphanBurnerScratch.Clear();
+            foreach (KeyValuePair<ZDOID, BurningState> kv in _burning)
+                if (kv.Value.EventId == 0) _orphanBurnerScratch.Add(kv.Key);
+
+            for (int i = 0; i < _orphanBurnerScratch.Count; i++)
+            {
+                ZDOID id = _orphanBurnerScratch[i];
+                BurningState s = _burning[id];
+                s.EventId = EventForPosition(s.Position, _fireIgniterPlayerId);
+                _burning[id] = s;
+            }
+
+            _orphanCellScratch.Clear();
+            foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
+                if (kv.Value.EventId == 0) _orphanCellScratch.Add(kv.Key);
+
+            for (int i = 0; i < _orphanCellScratch.Count; i++)
+            {
+                GroundCellKey key = _orphanCellScratch[i];
+                GroundCellState s = _groundBurning[key];
+                s.EventId = EventForPosition(CellCenter(key, s.Y), _fireIgniterPlayerId);
+                _groundBurning[key] = s;
+            }
+
+            if (_orphanBurnerScratch.Count > 0 || _orphanCellScratch.Count > 0)
+            {
+                FireLogger.Debug($"[EVENT] adopted {_orphanBurnerScratch.Count} burner(s) and " +
+                                 $"{_orphanCellScratch.Count} ground cell(s); {_events.Count} event(s) active.");
+            }
+        }
+
+        private readonly List<ZDOID> _orphanBurnerScratch = new List<ZDOID>();
+        private readonly List<GroundCellKey> _orphanCellScratch = new List<GroundCellKey>();
+
+        /// <summary>Drops events with no burner and no ground cell left.</summary>
+        private void PruneDeadEvents()
+        {
+            if (_events.Count == 0) return;
+            _liveEventIds.Clear();
+            foreach (BurningState s in _burning.Values) _liveEventIds.Add(s.EventId);
+            foreach (GroundCellState s in _groundBurning.Values) _liveEventIds.Add(s.EventId);
+
+            _deadEventScratch.Clear();
+            foreach (int id in _events.Keys) if (!_liveEventIds.Contains(id)) _deadEventScratch.Add(id);
+            for (int i = 0; i < _deadEventScratch.Count; i++)
+            {
+                _events.Remove(_deadEventScratch[i]);
+                FireLogger.Debug($"[EVENT] event {_deadEventScratch[i]} is out; {_events.Count} active.");
+            }
+        }
+
+        /// <summary>Per-event ramp — a new blaze starts cold even while an old one rages.</summary>
+        private float GetRampFraction(int eventId)
+        {
+            FireEvent ev = EventById(eventId);
+            if (ev == null) return GetRampFraction();
+            if (!FireConfig.FireRampEnabled.Value) return 1f;
+
+            float start = Mathf.Clamp01(FireConfig.FireRampStartFraction.Value);
+            float dur = Mathf.Max(1f, FireConfig.FireRampDurationSeconds.Value);
+            float age = (Time.time - ev.StartTime) + ev.RestoredRampAge;
+            return Mathf.Clamp01(start + (1f - start) * Mathf.Clamp01(age / dur));
+        }
+
+        /// <summary>Burners currently belonging to one event — the per-event budget.</summary>
+        private int BurningCountForEvent(int eventId)
+        {
+            int n = 0;
+            foreach (BurningState s in _burning.Values) if (s.EventId == eventId) n++;
+            return n;
+        }
+
+        /// <summary>Ground cells currently belonging to one event.</summary>
+        private int GroundCountForEvent(int eventId)
+        {
+            int n = 0;
+            foreach (GroundCellState s in _groundBurning.Values) if (s.EventId == eventId) n++;
+            return n;
+        }
+
         // One-shot latch for the wind-intensity fallback notice — see
         // IgniteAdjacentGroundCells. Deliberately never reset: an EnvMan that
         // can't report wind strength won't start doing so mid-session, and this
@@ -477,6 +651,8 @@ namespace FireFront.Fire
             FlushPendingPaint();
             FlushGroundFireSync();
             PruneFirebreakCache();
+            AdoptOrphanedFires();
+            PruneDeadEvents();
             LogStatusHeartbeat();
 
             if (_burning.Count == 0 && _groundBurning.Count == 0)
@@ -728,18 +904,22 @@ namespace FireFront.Fire
             if (_queue.Contains(id)) return;
             if (_dousedUntil.TryGetValue(id, out float wetUntil) && Time.time < wetUntil) return; // soaked — see _dousedUntil
 
-            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
+            // The budget is PER EVENT now, not global — a blaze on the far side
+            // of the map no longer starves this one. That global cap was the
+            // tester's "the first big fire denies any other from existing".
+            Vector3 targetPos = ValheimBridge.PositionOf(target);
+            int eventId = EventForPosition(targetPos, igniterPlayerId);
+            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction(eventId)));
 
-            if (_burning.Count < effectiveMax)
+            if (BurningCountForEvent(eventId) < effectiveMax)
             {
                 if (_fireStartTime < 0f) _fireStartTime = Time.time;
                 if (_fireOrigin == null)
                 {
-                    _fireOrigin = ValheimBridge.PositionOf(target);
-                    _fireIgniterPlayerId = igniterPlayerId;   // fresh event: its culprit is set once, here
-                    _nextCandidateRebuild = 0f;               // new fire, new area — rebuild the candidate cache now
+                    _fireOrigin = targetPos;                 // legacy global, still written to the sidecar
+                    _fireIgniterPlayerId = igniterPlayerId;
                 }
-                StartBurning(target, id);
+                StartBurning(target, id, eventId);
             }
             else if (_queue.TryEnqueue(id))
             {
@@ -1046,6 +1226,7 @@ namespace FireFront.Fire
                    $"groundradius {FireConfig.GroundSpreadRadius.Value}m, " +
                    $"interval {FireConfig.EffectiveSpreadCheckInterval}s, " +
                    $"lowspec {FireConfig.LowSpecPreset.Value}, " +
+                   $"fires {_events.Count}, " +
                    $"trees {FireConfig.BurnTreesAndLogs.Value}, " +
                    $"burnbuildings {FireConfig.BurnPlayerBuildings.Value}, " +
                    $"vfx '{FireConfig.VfxPrefabName.Value}', procedural {FireConfig.UseProceduralVfx.Value}, " +
@@ -1290,14 +1471,20 @@ namespace FireFront.Fire
             // distance matters here and this should reject before paying for a
             // raycast. Object-to-ground seeding (IgniteGroundNear) is already
             // bounded by GroundSpreadRadius and essentially never trips this.
-            if (FireConfig.GroundMaxSpreadDistanceEnabled.Value && _fireOrigin.HasValue)
+            // Leashed against THIS cell's own blaze, not one global origin —
+            // otherwise a fire far from the first was measured against the first
+            // one's origin and refused outright, which is half of why a distant
+            // second fire could never spread.
+            int cellEventId = EventForPosition(approxCenter, 0L);
+            FireEvent cellEvent = EventById(cellEventId);
+            if (FireConfig.GroundMaxSpreadDistanceEnabled.Value && cellEvent != null)
             {
                 float maxDist = FireConfig.GroundMaxSpreadDistance.Value;
-                if ((approxCenter - _fireOrigin.Value).sqrMagnitude > maxDist * maxDist) return;
+                if ((approxCenter - cellEvent.Origin).sqrMagnitude > maxDist * maxDist) return;
             }
 
-            int effectiveGroundMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveGroundMaxConcurrent * GetRampFraction()));
-            if (_groundBurning.Count >= effectiveGroundMax) return; // silent drop, natural retry next cycle
+            int effectiveGroundMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveGroundMaxConcurrent * GetRampFraction(cellEventId)));
+            if (GroundCountForEvent(cellEventId) >= effectiveGroundMax) return; // silent drop, natural retry next cycle
 
             if (_fireStartTime < 0f) _fireStartTime = Time.time;
             if (_fireOrigin == null) _fireOrigin = approxCenter;
@@ -1334,7 +1521,7 @@ namespace FireFront.Fire
                 duration *= FireConfig.RainGroundBurnDurationMultiplier.Value;
             }
 
-            _groundBurning[key] = new GroundCellState { ExpireAt = Time.time + duration, Y = realY };
+            _groundBurning[key] = new GroundCellState { ExpireAt = Time.time + duration, Y = realY, EventId = cellEventId };
             FireLogger.Debug($"Ground ignited ({_groundBurning.Count}/{effectiveGroundMax}) at cell ({key.X},{key.Z})");
             SpawnGroundVfxFor(key, CellCenter(key, realY));
             _groundIgnitedSinceFlush.Add((key, realY));
@@ -1421,7 +1608,7 @@ namespace FireFront.Fire
         // Cycle steps — object fire
         // ---------------------------------------------------------------
 
-        private void StartBurning(Component target, ZDOID id)
+        private void StartBurning(Component target, ZDOID id, int eventId)
         {
             Vector3 position = ValheimBridge.PositionOf(target);
             _burning[id] = new BurningState
@@ -1429,7 +1616,8 @@ namespace FireFront.Fire
                 ExpireAt = Time.time + FireConfig.BurnDurationSeconds.Value,
                 IgnitedAt = Time.time,
                 Position = position,
-                PrefabName = ValheimBridge.PrefabNameOf(target)
+                PrefabName = ValheimBridge.PrefabNameOf(target),
+                EventId = eventId
             };
             FireLogger.Debug($"Ignited ({_burning.Count}/{FireConfig.MaxConcurrentBurning.Value}): {ValheimBridge.NameOf(target)}");
             SpawnVfxFor(id, position);
@@ -1720,8 +1908,13 @@ namespace FireFront.Fire
 
         private void PromoteFromQueue()
         {
-            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
-            while (_burning.Count < effectiveMax)
+            // Bounded by the queue rather than by one global burning count: each
+            // candidate is admitted only if ITS OWN blaze has room, so a raging
+            // fire can no longer eat the promotions belonging to a different one.
+            // A candidate whose event is full is dropped exactly as before —
+            // spread re-offers it next cycle.
+            int guard = _queue.Capacity + 1;
+            while (guard-- > 0)
             {
                 ZDOID next = _queue.DequeueNextValid();
                 if (next.Equals(ZDOID.None)) return;
@@ -1730,7 +1923,12 @@ namespace FireFront.Fire
                 Component target = ValheimBridge.ComponentFromZdoid(next);
                 if (target == null || !ValheimBridge.IsAlive(target) || !ValheimBridge.IsBurnable(target)) continue;
 
-                StartBurning(target, next);
+                // A queued item rejoins whichever blaze is nearest it now.
+                int evId = EventForPosition(ValheimBridge.PositionOf(target), 0L);
+                int evMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction(evId)));
+                if (BurningCountForEvent(evId) >= evMax) continue;
+
+                StartBurning(target, next, evId);
             }
         }
 
@@ -2179,7 +2377,7 @@ namespace FireFront.Fire
                     TryIgnite(candidate);
                 }
 
-                IgniteZdoCandidatesNear(origin, effectiveSpreadRadius);
+                IgniteZdoCandidatesNear(origin, effectiveSpreadRadius, burnerState.EventId);
                 IgniteGroundNear(origin, groundRadius);
             }
 
@@ -2211,7 +2409,7 @@ namespace FireFront.Fire
                         TryIgnite(candidate);
                     }
 
-                    IgniteZdoCandidatesNear(origin, groundRadius);
+                    IgniteZdoCandidatesNear(origin, groundRadius, _groundBurning[key].EventId);
                 }
             }
         }
@@ -2230,65 +2428,74 @@ namespace FireFront.Fire
             List<WearNTear> pieces = ValheimBridge.AllPieces;
             for (int i = 0; i < pieces.Count; i++) _candidates.Add(pieces[i]);
 
-            // ZDO-layer candidates — see _zdoCandidates for why. One scan around
-            // the fire's origin covers the whole event: cell-to-cell spread is
-            // leashed to GroundMaxSpreadDistance from that origin, so origin +
-            // leash + the object-spread reach bounds everything a burner could
-            // touch this cycle. Leash off means an unbounded front; 100m of
-            // coverage beyond the origin is accepted as the practical limit
-            // there rather than scanning ever-wider rings every cycle.
-            Vector3? scanCenter = _fireOrigin;
-            if (!scanCenter.HasValue)
+            // ZDO-layer candidates — see _zdoCandidates for why. ONE SWEEP PER
+            // EVENT, unioned. This used to be a single sweep centred on
+            // _fireOrigin, which meant every fire in the world had to live
+            // inside one bounded circle around wherever the FIRST fire started:
+            // light a fire, travel past that radius, light another, and the
+            // second one found zero candidates and could not spread at all.
+            // Each blaze now gets its own sweep around its own origin, sized to
+            // its own front.
+            _zdoCandidates.Clear();
+            bool zdoScanRan = false;
+
+            float reach = Mathf.Max(FireConfig.SpreadRadius.Value, FireConfig.GroundSpreadRadius.Value);
+            float leash = FireConfig.GroundMaxSpreadDistanceEnabled.Value
+                ? FireConfig.GroundMaxSpreadDistance.Value
+                : 100f;
+
+            _sweepCenters.Clear();
+            foreach (FireEvent ev in _events.Values) _sweepCenters.Add((ev.Id, ev.Origin));
+            if (_sweepCenters.Count == 0)
             {
-                foreach (BurningState state in _burning.Values) { scanCenter = state.Position; break; }
-            }
-            if (!scanCenter.HasValue)
-            {
-                foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
+                // No event yet (restored state, or a legacy save) — fall back to
+                // any live fire position so a sweep still happens.
+                foreach (BurningState state in _burning.Values) { _sweepCenters.Add((0, state.Position)); break; }
+                if (_sweepCenters.Count == 0)
                 {
-                    scanCenter = CellCenter(kv.Key, kv.Value.Y);
-                    break;
+                    foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
+                    {
+                        _sweepCenters.Add((0, CellCenter(kv.Key, kv.Value.Y)));
+                        break;
+                    }
                 }
             }
 
-            bool zdoScanRan = false;
-            if (scanCenter.HasValue)
+            for (int s = 0; s < _sweepCenters.Count; s++)
             {
-                float reach = Mathf.Max(FireConfig.SpreadRadius.Value, FireConfig.GroundSpreadRadius.Value);
-                float leash = FireConfig.GroundMaxSpreadDistanceEnabled.Value
-                    ? FireConfig.GroundMaxSpreadDistance.Value
-                    : 100f;
+                (int evId, Vector3 center) = _sweepCenters[s];
 
                 // Sweep the fire it ACTUALLY is, not the fire it could eventually
                 // become. The leash is a lifetime maximum: a fire five cells wide
                 // got the same 150m+reach sweep as one that had burned for an
                 // hour, which at 64m zones is 7x7=49 sectors walked every rebuild
-                // regardless of size. Radius now follows the live front (furthest
-                // burner from the scan centre) plus one full reach so next cycle's
-                // spread is always covered, still capped at the old leash figure
-                // so this can never sweep MORE than it did before — only less,
-                // which for a young fire is one or nine sectors instead of 49.
+                // regardless of size. Radius follows this event's live front plus
+                // one full reach so next cycle's spread is always covered, still
+                // capped at the leash figure so a sweep can never grow past what
+                // it used to cost.
                 float extent = 0f;
                 foreach (BurningState state in _burning.Values)
                 {
-                    float d = (state.Position - scanCenter.Value).sqrMagnitude;
+                    if (evId != 0 && state.EventId != evId) continue;
+                    float d = (state.Position - center).sqrMagnitude;
                     if (d > extent) extent = d;
                 }
                 foreach (KeyValuePair<GroundCellKey, GroundCellState> kv in _groundBurning)
                 {
-                    float d = (CellCenter(kv.Key, kv.Value.Y) - scanCenter.Value).sqrMagnitude;
+                    if (evId != 0 && kv.Value.EventId != evId) continue;
+                    float d = (CellCenter(kv.Key, kv.Value.Y) - center).sqrMagnitude;
                     if (d > extent) extent = d;
                 }
                 extent = Mathf.Sqrt(extent);
 
                 float radius = Mathf.Min(extent + reach + 8f, leash + reach + 8f);
-                zdoScanRan = ValheimBridge.CollectBurnableZdosNear(
-                    scanCenter.Value, radius,
-                    FireConfig.BurnTreesAndLogs.Value, FireConfig.BurnPlayerBuildings.Value, _zdoCandidates);
-            }
-            else
-            {
-                _zdoCandidates.Clear();
+                if (ValheimBridge.CollectBurnableZdosNear(
+                        center, radius,
+                        FireConfig.BurnTreesAndLogs.Value, FireConfig.BurnPlayerBuildings.Value, _zdoSweepScratch))
+                {
+                    zdoScanRan = true;
+                    for (int i = 0; i < _zdoSweepScratch.Count; i++) _zdoCandidates.Add(_zdoSweepScratch[i]);
+                }
             }
 
             // Tree/log INSTANCE scans are a fallback, not the primary source.
@@ -2318,17 +2525,19 @@ namespace FireFront.Fire
         /// is created; TryIgnite's own dedupe covers the rest (including an
         /// object the instance loop above already ignited this cycle).
         /// </summary>
-        private void IgniteZdoCandidatesNear(Vector3 origin, float radius)
+        private void IgniteZdoCandidatesNear(Vector3 origin, float radius, int eventId)
         {
             if (_zdoCandidates.Count == 0) return;
 
-            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction()));
+            // Budget checked against the blaze this burner belongs to.
+            int effectiveMax = Mathf.Max(1, Mathf.RoundToInt(FireConfig.EffectiveMaxConcurrentBurning * GetRampFraction(eventId)));
+            int evBurning = BurningCountForEvent(eventId);
             float radiusSqr = radius * radius;
 
             QueryGrid(_zdoCandidateGrid, origin, radius);
             for (int q = 0; q < _gridQueryScratch.Count; q++)
             {
-                if (_burning.Count >= effectiveMax && _queue.Count >= _queue.Capacity) return;
+                if (evBurning >= effectiveMax && _queue.Count >= _queue.Capacity) return;
 
                 ValheimBridge.ZdoBurnable candidate = _zdoCandidates[_gridQueryScratch[q]];
                 if ((candidate.Position - origin).sqrMagnitude > radiusSqr) continue;

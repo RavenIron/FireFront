@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.19.9
+
+- **Fires in different places are now separate fires.** Everything about a
+  blaze used to be global — one origin, one ramp clock, one arsonist, one
+  budget — and that had three consequences:
+  - **A second fire beyond the first one's radius could not spread at all.**
+    The spread-candidate sweep centred on wherever the FIRST fire started and
+    reached a bounded distance. Light a fire, travel past that radius, light
+    another: the second one burned but never caught anything, because it had
+    no candidates. Reported from play ("tp'd far away... nothing propagates")
+    and confirmed in the code. This is the headline fix.
+  - **The first big fire starved every later one.** `MaxConcurrentBurning` was
+    one global budget, so a maxed-out blaze denied any other fire the right to
+    exist until it burned out. The cap is now per fire.
+  - **A later fire inherited the first one's ramp and its arsonist**, so a
+    natural fire could be attributed to whoever lit something else entirely.
+
+  A fire event now owns its origin, ramp, igniter and budget. Ignitions join
+  the nearest event within reach of it (ground leash plus a spread radius),
+  otherwise they start their own; an event ends when its last burner and last
+  ground cell go out. Ground spread is leashed against its own event's origin
+  rather than a global one. Fires restored from the sidecar, which stores no
+  event id, are clustered back into events by position on the first tick.
+  `firestatus` reports a `fires N` count.
+
 ## 0.19.8
 
 - **Spread stopped testing every burnable in the world against every fire.**
