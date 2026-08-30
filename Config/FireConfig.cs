@@ -207,10 +207,11 @@ namespace FireFront.Config
                 "otherwise carries its own real-time light for its whole burn.");
 
             SmoulderAfterFraction = config.Bind(
-                "Visuals", "SmoulderAfterFraction", 0.45f,
+                "Visuals", "SmoulderAfterFraction", 0.65f,
                 new ConfigDescription(
                     "Fraction of its burn time an object shows full flames before dropping to " +
-                    "smouldering. 0.45 = flames for the first ~45%, embers and smoke after.",
+                    "smouldering. 0.65 = flames for the first ~65%, then embers, glow and smoke " +
+                    "for the rest. It is still burning and still spreading while it smoulders.",
                     new AcceptableValueRange<float>(0.05f, 1f)));
 
             WatchTheWorldBurn = config.Bind(

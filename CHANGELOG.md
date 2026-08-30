@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.19.13
+
+- **Retuned smouldering — 0.19.12's version read as "the fire went out".**
+  Reported straight from play, along with "trees aren't falling". The trees
+  *were* falling (the log showed burn-downs, a growing regrowth queue and zero
+  kill failures) — the simulation was never affected. But at a 60s burn
+  duration a fire spent its last 33 seconds looking extinguished while still
+  being contagious and still burning anything standing in it, so both
+  complaints were the same bug: the downgrade was far too aggressive.
+
+  What changed:
+  - **The light is shrunk, not destroyed.** Deleting it took the glow with it.
+    Range is the dominant cost of a realtime light — it decides how many
+    objects the light must touch — so halving range and intensity keeps most
+    of the saving while the fire still visibly has heat in it.
+  - **Flames drop to 35%, not 12%**, and stay a warm ember orange instead of a
+    near-black red. 12% was invisible.
+  - **Intermittent flare-ups**, which is what the original suggestion actually
+    asked for and the first version missed. A steady weak trickle reads as
+    dying; irregular bursts read as still burning, just not raging — and they
+    cost nothing between bursts, which is the point.
+  - **Smoke barely reduced** (80%), since smoke is the signature of smouldering.
+  - Turbulence stays on but weaker; off entirely left embers rising in dead
+    straight lines.
+  - **Default threshold moved 0.45 → 0.65**, so flames carry most of the burn
+    and smouldering is the tail rather than the majority of it.
 ## 0.19.12
 
 - **Fires stop drawing full flames forever — they drop to smouldering.** A

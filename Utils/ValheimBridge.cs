@@ -1834,8 +1834,20 @@ namespace FireFront.Utils
         {
             if (vfx == null) return;
 
+            // The light is SHRUNK, not destroyed. Deleting it outright (first
+            // attempt) took the glow with it and the fire read as extinguished —
+            // which matters because it is still contagious and still burning
+            // anything standing in it. Range is the dominant cost of a realtime
+            // light (it decides how many objects the light has to touch), so
+            // more than halving it keeps most of the saving while the fire
+            // still visibly has heat in it.
             Light light = vfx.GetComponent<Light>();
-            if (light != null) Object.Destroy(light);
+            if (light != null)
+            {
+                light.intensity *= 0.45f;
+                light.range *= 0.5f;
+                light.color = new Color(1f, 0.35f, 0.10f); // deeper ember red
+            }
 
             ParticleSystem[] systems = vfx.GetComponentsInChildren<ParticleSystem>(true);
             for (int i = 0; i < systems.Length; i++)
@@ -1844,28 +1856,38 @@ namespace FireFront.Utils
                 if (ps == null) continue;
 
                 bool isSmoke = ps.gameObject.name == "Smoke";
-                float keep = isSmoke ? 0.5f : 0.12f;   // flames nearly out, smoke lingers
+                // Smoke is the SIGNATURE of smouldering, so it is barely reduced.
+                // Flames drop hard but not to nothing — 0.12 was invisible.
+                float keep = isSmoke ? 0.8f : 0.35f;
 
                 ParticleSystem.MainModule main = ps.main;
-                main.maxParticles = Mathf.Max(4, Mathf.RoundToInt(main.maxParticles * keep));
-                if (!isSmoke)
-                {
-                    // dull ember red rather than bright flame orange
-                    main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.85f, 0.25f, 0.05f));
-                    main.startSpeed = new ParticleSystem.MinMaxCurve(0.15f, 0.45f);
-                    main.startSize = new ParticleSystem.MinMaxCurve(0.10f, 0.22f);
-                }
+                main.maxParticles = Mathf.Max(8, Mathf.RoundToInt(main.maxParticles * keep));
 
                 ParticleSystem.EmissionModule emission = ps.emission;
                 emission.rateOverTime = new ParticleSystem.MinMaxCurve(
-                    Mathf.Max(1.5f, emission.rateOverTime.constant * keep));
+                    Mathf.Max(2f, emission.rateOverTime.constant * keep));
 
-                // Turbulence is a per-particle cost for something nobody looks
-                // at closely once it is embers.
                 if (!isSmoke)
                 {
+                    main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.45f, 0.10f));
+                    main.startSpeed = new ParticleSystem.MinMaxCurve(0.35f, 0.9f);
+                    main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.34f);
+
+                    // INTERMITTENT FLAMES — the tester's actual words, and the
+                    // thing a constant weak trickle failed to convey. A steady
+                    // low emission reads as "dying"; irregular flare-ups read as
+                    // "still burning, just not raging". Costs nothing between
+                    // bursts, which is the whole point.
+                    emission.SetBursts(new[]
+                    {
+                        new ParticleSystem.Burst(0f, new ParticleSystem.MinMaxCurve(6f, 14f), 1000, 2.5f),
+                    });
+
+                    // Turbulence stays ON but weaker — with it off entirely the
+                    // embers sat in dead straight lines and looked artificial.
                     ParticleSystem.NoiseModule noise = ps.noise;
-                    noise.enabled = false;
+                    noise.enabled = true;
+                    noise.strength = 0.15f;
                 }
             }
         }
