@@ -26,6 +26,25 @@
   config, so turning it off restores your own values exactly. `firestatus`
   shows a `burntheworld` flag reporting whether it is actually in force
   (which is false while low-spec overrides it).
+
+  **VERIFIED LIVE 2026-08-29.** `fireset burntheworld true` relayed to a
+  dedicated server mid-burn and every flag flipped in the next heartbeat:
+
+  ```
+  before: burning   22/150,  ground   39/150,  fires  3, maturity 25%, radius  8m, interval 0.75s,
+          firebreaks True,  waterblocks True,  exhaustion True,  leash True,  ramp enabled True
+  after:  burning 1316/2600, ground 6500/6500, fires 13, maturity  0%, radius 15m, interval 0.25s,
+          firebreaks False, waterblocks False, exhaustion False, leash False, ramp enabled False
+  ```
+
+  Ground pinned at its ceiling (500 x 13 fires), so it was cap-limited rather
+  than out of fuel. Server load: **one core saturated** (10.2 CPU-seconds per
+  10s wall, single-threaded simulation) and still keeping cadence — the
+  practical ceiling, which is the honest answer to "how much devastation fits".
+  For scale, at 1316 burners the pre-0.19.8 code would have been doing ~2.6
+  MILLION distance checks per cycle four times a second; this configuration
+  only exists because of the spatial grid.
+
 ## 0.19.10
 
 - **`fireset debug true|false` — debug logging is now live-settable and
