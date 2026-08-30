@@ -1809,6 +1809,66 @@ namespace FireFront.Utils
         /// size, and a completely different color/alpha curve. Offset slightly
         /// above the flame's origin so it visually emerges from the flame tips.
         /// </summary>
+
+        /// <summary>
+        /// Turns a full fire effect into a smouldering one, in place.
+        /// </summary>
+        /// <remarks>
+        /// A tester's suggestion, and the measurement behind it was their own:
+        /// their residual frametime spike was WORSE looking toward the fire and
+        /// better looking away, which is a rendering cost, not a simulation one.
+        /// A burn lasts BurnDurationSeconds (240 by default) and rendered a full
+        /// flame for every second of it.
+        ///
+        /// The single most expensive part per burner is the real-time Light —
+        /// fifty burning objects meant fifty dynamic lights — so that goes
+        /// first. Flames drop to a few embers; smoke is KEPT (reduced), because
+        /// smoke is what actually reads as "this ground is still smouldering"
+        /// once the flames are gone.
+        ///
+        /// Mutates the existing components rather than destroying and respawning
+        /// the effect: no allocation, no VFX churn, and the object keeps its
+        /// place in _vfx so removal still works normally.
+        /// </remarks>
+        public static void DowngradeVfxToSmoulder(GameObject vfx)
+        {
+            if (vfx == null) return;
+
+            Light light = vfx.GetComponent<Light>();
+            if (light != null) Object.Destroy(light);
+
+            ParticleSystem[] systems = vfx.GetComponentsInChildren<ParticleSystem>(true);
+            for (int i = 0; i < systems.Length; i++)
+            {
+                ParticleSystem ps = systems[i];
+                if (ps == null) continue;
+
+                bool isSmoke = ps.gameObject.name == "Smoke";
+                float keep = isSmoke ? 0.5f : 0.12f;   // flames nearly out, smoke lingers
+
+                ParticleSystem.MainModule main = ps.main;
+                main.maxParticles = Mathf.Max(4, Mathf.RoundToInt(main.maxParticles * keep));
+                if (!isSmoke)
+                {
+                    // dull ember red rather than bright flame orange
+                    main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.85f, 0.25f, 0.05f));
+                    main.startSpeed = new ParticleSystem.MinMaxCurve(0.15f, 0.45f);
+                    main.startSize = new ParticleSystem.MinMaxCurve(0.10f, 0.22f);
+                }
+
+                ParticleSystem.EmissionModule emission = ps.emission;
+                emission.rateOverTime = new ParticleSystem.MinMaxCurve(
+                    Mathf.Max(1.5f, emission.rateOverTime.constant * keep));
+
+                // Turbulence is a per-particle cost for something nobody looks
+                // at closely once it is embers.
+                if (!isSmoke)
+                {
+                    ParticleSystem.NoiseModule noise = ps.noise;
+                    noise.enabled = false;
+                }
+            }
+        }
         private static void BuildSmokeParticles(GameObject parent)
         {
             var smokeGo = new GameObject("Smoke");

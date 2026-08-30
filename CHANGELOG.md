@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.19.12
+
+- **Fires stop drawing full flames forever — they drop to smouldering.** A
+  tester's idea, and their own measurement is what justified it: their residual
+  frametime spike was *worse looking toward the fire and better looking away*,
+  which is a rendering cost, not a simulation one. A burn lasts
+  `BurnDurationSeconds` (240 by default) and rendered a full flame effect for
+  every second of it.
+
+  After `SmoulderAfterFraction` of its burn (45% by default) a fire drops to
+  embers and smoke: **the real-time Light is destroyed** — the single most
+  expensive part per burner, and there was one per burning object — flames fall
+  to a few dull embers with turbulence off, and smoke is kept but thinned,
+  because smoke is what actually reads as "this is still smouldering".
+
+  **The simulation is completely untouched.** It burns for exactly as long,
+  spreads exactly the same, and hurts exactly as much. This is only what gets
+  drawn.
+
+  Done on both sides, and the client half is the one that matters: a dedicated
+  server is headless, so its own effects render nothing — what a player sees is
+  the mirror spawned from fire broadcasts. Each client runs the downgrade on
+  its own clock from when it started showing that fire, so this costs no extra
+  network traffic. The effect is mutated in place rather than destroyed and
+  respawned, so there is no VFX churn. Disable with `SmoulderingVfxEnabled`.
 ## 0.19.11
 
 - **`WatchTheWorldBurn` — one switch for maximum devastation.** The opposite

@@ -62,6 +62,8 @@ namespace FireFront.Config
         public static ConfigEntry<float> GroundMaxSpreadDistance;
         public static ConfigEntry<bool> LowSpecPreset;
         public static ConfigEntry<bool> WatchTheWorldBurn;
+        public static ConfigEntry<bool> SmoulderingVfxEnabled;
+        public static ConfigEntry<float> SmoulderAfterFraction;
 
         // --- Low-spec preset -------------------------------------------------
         //
@@ -194,6 +196,22 @@ namespace FireFront.Config
             Enabled = config.Bind(
                 "General", "Enabled", true,
                 "Master switch. When false, no burn timers run and no spread occurs.");
+
+            SmoulderingVfxEnabled = config.Bind(
+                "Visuals", "SmoulderingVfxEnabled", true,
+                "After a fire has been burning a while, drop its full flame effect down to a " +
+                "smouldering one — embers and smoke instead of flames, and no dynamic light. " +
+                "The simulation is untouched: it still burns, still spreads, still hurts, for " +
+                "exactly as long. This is purely what gets DRAWN, and it is the single biggest " +
+                "rendering saving available during a big fire, because every burning object " +
+                "otherwise carries its own real-time light for its whole burn.");
+
+            SmoulderAfterFraction = config.Bind(
+                "Visuals", "SmoulderAfterFraction", 0.45f,
+                new ConfigDescription(
+                    "Fraction of its burn time an object shows full flames before dropping to " +
+                    "smouldering. 0.45 = flames for the first ~45%, embers and smoke after.",
+                    new AcceptableValueRange<float>(0.05f, 1f)));
 
             WatchTheWorldBurn = config.Bind(
                 "General", "WatchTheWorldBurn", false,

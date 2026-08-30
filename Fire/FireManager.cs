@@ -71,6 +71,7 @@ namespace FireFront.Fire
             public string PrefabName;
             public int KillAttempts; // bounded retry if resolving a live Component at expiry fails
             public int EventId;      // which fire event this burner belongs to (0 = unassigned/legacy)
+            public bool Smouldering; // its VFX has been dropped to embers+smoke (cosmetic only)
         }
 
         private readonly Dictionary<ZDOID, BurningState> _burning = new Dictionary<ZDOID, BurningState>();
@@ -615,6 +616,7 @@ namespace FireFront.Fire
             }
 
             DrainRemoteVfxSpawnQueue(); // client-side VFX budget — must run before the server gate below
+            ProcessRemoteSmouldering(); // client-side: the server is headless, THIS is what a player sees
 
             // Everything below this point is the actual fire simulation, and it
             // must only ever run on the server. Ignition already only populates
@@ -653,6 +655,7 @@ namespace FireFront.Fire
             PruneFirebreakCache();
             AdoptOrphanedFires();
             PruneDeadEvents();
+            ProcessSmouldering();
             LogStatusHeartbeat();
 
             if (_burning.Count == 0 && _groundBurning.Count == 0)
@@ -1765,6 +1768,55 @@ namespace FireFront.Fire
         /// removes a local, non-authoritative, no-damage copy so they can see
         /// the fire even though they aren't simulating it.
         /// </summary>
+
+        // When each remote VFX started showing, so a client can drop it to
+        // embers on its own clock without any extra network traffic.
+        private readonly Dictionary<Component, float> _remoteVfxSpawnedAt = new Dictionary<Component, float>();
+        private readonly HashSet<Component> _remoteSmouldering = new HashSet<Component>();
+        private readonly List<Component> _remoteSmoulderScratch = new List<Component>();
+        private float _nextRemoteSmoulderCheck;
+
+        /// <summary>
+        /// Client-side half of the smouldering downgrade, and the half that
+        /// actually saves frames: the server is headless, so its own _vfx render
+        /// nothing — what a player SEES is _remoteVfx, spawned here from
+        /// FireEvent broadcasts. Each client runs this on its own clock from
+        /// when it started showing a given fire, so no extra sync is needed.
+        /// Cosmetic only, and throttled: nothing here is worth a per-frame pass.
+        /// </summary>
+        private void ProcessRemoteSmouldering()
+        {
+            if (!FireConfig.SmoulderingVfxEnabled.Value) return;
+            if (_remoteVfx.Count == 0) return;
+            if (Time.time < _nextRemoteSmoulderCheck) return;
+            _nextRemoteSmoulderCheck = Time.time + 2f;
+
+            float after = FireConfig.BurnDurationSeconds.Value * Mathf.Clamp01(FireConfig.SmoulderAfterFraction.Value);
+            float now = Time.time;
+
+            _remoteSmoulderScratch.Clear();
+            foreach (KeyValuePair<Component, float> kv in _remoteVfxSpawnedAt)
+            {
+                if (_remoteSmouldering.Contains(kv.Key)) continue;
+                if (now - kv.Value < after) continue;
+                _remoteSmoulderScratch.Add(kv.Key);
+            }
+
+            for (int i = 0; i < _remoteSmoulderScratch.Count; i++)
+            {
+                Component c = _remoteSmoulderScratch[i];
+                _remoteSmouldering.Add(c); // latch first — a throw must not retry forever
+                try
+                {
+                    if (_remoteVfx.TryGetValue(c, out GameObject go))
+                        ValheimBridge.DowngradeVfxToSmoulder(go);
+                }
+                catch (System.Exception ex)
+                {
+                    FireLogger.Debug($"[SMOULDER] remote downgrade failed: {ex.Message}");
+                }
+            }
+        }
         private void HandleFireEventBroadcast(long sender, ZDOID id, bool started)
         {
             // Receipt trace — kept permanently, see HandleGroundFireSync.
@@ -1796,7 +1848,11 @@ namespace FireFront.Fire
                 if (prefab != null) instance = ValheimBridge.SpawnVfx(prefab, ValheimBridge.PositionOf(target));
             }
 
-            if (instance != null) _remoteVfx[target] = instance;
+            if (instance != null)
+            {
+                _remoteVfx[target] = instance;
+                _remoteVfxSpawnedAt[target] = Time.time; // this client's own smoulder clock
+            }
         }
 
         private void RemoveRemoteVfxFor(Component target)
@@ -1804,6 +1860,8 @@ namespace FireFront.Fire
             if (_remoteVfx.TryGetValue(target, out GameObject instance))
             {
                 _remoteVfx.Remove(target);
+                _remoteVfxSpawnedAt.Remove(target);
+                _remoteSmouldering.Remove(target);
                 if (instance != null) Destroy(instance);
             }
         }
@@ -1910,6 +1968,57 @@ namespace FireFront.Fire
             }
         }
 
+
+        /// <summary>
+        /// Drops long-burning fires to a smouldering visual. COSMETIC ONLY —
+        /// nothing here touches burn timers, spread or damage; a smouldering
+        /// object burns and spreads exactly as it did with full flames.
+        /// Wrapped per-burner so a VFX failure can never abort the cycle
+        /// (house rule: cosmetics stay off the gameplay path).
+        /// </summary>
+        private void ProcessSmouldering()
+        {
+            if (!FireConfig.SmoulderingVfxEnabled.Value) return;
+            if (_burning.Count == 0) return;
+
+            float after = FireConfig.BurnDurationSeconds.Value * Mathf.Clamp01(FireConfig.SmoulderAfterFraction.Value);
+            float now = Time.time;
+
+            _smoulderScratch.Clear();
+            foreach (KeyValuePair<ZDOID, BurningState> kv in _burning)
+            {
+                if (kv.Value.Smouldering) continue;
+                if (now - kv.Value.IgnitedAt < after) continue;
+                _smoulderScratch.Add(kv.Key);
+            }
+
+            for (int i = 0; i < _smoulderScratch.Count; i++)
+            {
+                ZDOID id = _smoulderScratch[i];
+                if (!_burning.TryGetValue(id, out BurningState s)) continue;
+                try
+                {
+                    if (_vfx.TryGetValue(id, out GameObject instance))
+                        ValheimBridge.DowngradeVfxToSmoulder(instance);
+                }
+                catch (System.Exception ex)
+                {
+                    FireLogger.Debug($"[SMOULDER] downgrade failed for {id}: {ex.Message}");
+                }
+                finally
+                {
+                    // Latch regardless: a downgrade that threw must not be retried
+                    // every cycle for the rest of the burn.
+                    s.Smouldering = true;
+                    _burning[id] = s;
+                }
+            }
+
+            if (_smoulderScratch.Count > 0)
+                FireLogger.Debug($"[SMOULDER] {_smoulderScratch.Count} fire(s) dropped to embers.");
+        }
+
+        private readonly List<ZDOID> _smoulderScratch = new List<ZDOID>();
         private void PromoteFromQueue()
         {
             // Bounded by the queue rather than by one global burning count: each
