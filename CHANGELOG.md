@@ -25,6 +25,11 @@
   its own clock from when it started showing that fire, so this costs no extra
   network traffic. The effect is mutated in place rather than destroyed and
   respawned, so there is no VFX churn. Disable with `SmoulderingVfxEnabled`.
+
+  Server-side pass VERIFIED LIVE 2026-08-29: `[SMOULDER] 24 fire(s) dropped to
+  embers.` — one cycle, 24 burners past the threshold, latched, no throw. The
+  CLIENT half is the one that saves frames and can only be judged by eye; it
+  logs solely on failure, and none appeared.
 ## 0.19.11
 
 - **`WatchTheWorldBurn` — one switch for maximum devastation.** The opposite
