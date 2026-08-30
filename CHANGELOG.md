@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.19.14
+
+- **`fireset smoulderafter <0.05-1>` and `fireset smouldering true|false`.**
+  The smoulder threshold is an aesthetic value that needs iterating by eye, and
+  it was the one thing that could only be changed by editing a config and
+  restarting the server — the worst possible loop for something you tune by
+  looking at it. Both are now live-settable and relayed like every other key.
+  (Audit: 51 switch cases, 51 map entries.)
+- Note for anyone confused by a default that did not apply: BepInEx persists
+  config values to disk, so 0.19.13's new default of 0.65 was silently
+  overridden by the 0.45 that 0.19.12 had already written. A changed default
+  only reaches an install that has never run an older build. Set it explicitly.
 ## 0.19.13
 
 - **Retuned smouldering — 0.19.12's version read as "the fire went out".**

@@ -47,7 +47,7 @@ namespace FireFront.Commands
                 args => FireDebug(args));
 
             new Terminal.ConsoleCommand("fireset",
-                "FireFront: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|burntheworld|enabled> <value>",
+                "FireFront: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|burntheworld|smouldering|smoulderafter|enabled> <value>",
                 args => FireSet(args));
 
             new Terminal.ConsoleCommand("firelistprefabs",
@@ -245,7 +245,7 @@ namespace FireFront.Commands
         {
             if (args.Length < 3)
             {
-                Say(args, "Usage: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|burntheworld|enabled> <value>");
+                Say(args, "Usage: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|burntheworld|smouldering|smoulderafter|enabled> <value>");
                 return;
             }
 
@@ -272,6 +272,14 @@ namespace FireFront.Commands
                     break;
                 case "spreadinterval":
                     if (float.TryParse(raw, out float si)) { FireConfig.SpreadCheckInterval.Value = si; Ok(args, key, si); }
+                    else Bad(args, raw);
+                    break;
+                case "smouldering":
+                    if (bool.TryParse(raw, out bool smv)) { FireConfig.SmoulderingVfxEnabled.Value = smv; Ok(args, key, smv); }
+                    else Bad(args, raw);
+                    break;
+                case "smoulderafter":
+                    if (float.TryParse(raw, out float sma)) { FireConfig.SmoulderAfterFraction.Value = sma; Ok(args, key, FireConfig.SmoulderAfterFraction.Value); }
                     else Bad(args, raw);
                     break;
                 case "burntheworld":
@@ -726,6 +734,8 @@ namespace FireFront.Commands
                 { "lowspec", FireConfig.LowSpecPreset },
                 { "debug", FireConfig.VerboseLogging },
                 { "burntheworld", FireConfig.WatchTheWorldBurn },
+                { "smouldering", FireConfig.SmoulderingVfxEnabled },
+                { "smoulderafter", FireConfig.SmoulderAfterFraction },
                 { "burnduration", FireConfig.BurnDurationSeconds },
                 { "firematurity", FireConfig.SpreadMaturityFraction },
                 { "spreadradius", FireConfig.SpreadRadius },
