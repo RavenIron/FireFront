@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.19.10
+
+- **`fireset debug true|false` — debug logging is now live-settable and
+  server-relayable.** `firedebug` only ever toggled the machine it was typed
+  on, so turning verbose logging off on a dedicated server meant editing the
+  config and restarting, which kicks everyone. It is now a normal `fireset`
+  key like everything else, forwarded to the server and authorized there.
+- **`firestatus` stopped reporting a nonsense cap.** Caps went per-event in
+  0.19.9, so a global total printed against a per-event cap read as
+  `ground 81/50` — which looks like a broken cap and is not: with two fires
+  the real ceiling is 50 *each*. The line now shows capacity as cap x live
+  events, so that reads `ground 81/100`.
 ## 0.19.9
 
 - **Fires in different places are now separate fires.** Everything about a

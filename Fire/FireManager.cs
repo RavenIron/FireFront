@@ -1218,9 +1218,13 @@ namespace FireFront.Fire
             // the low-spec preset on, the configured numbers are not the ones
             // in force, and a status line that reported them would send someone
             // hunting a cap that isn't the real one.
-            return $"FireFront: burning {_burning.Count}/{FireConfig.EffectiveMaxConcurrentBurning}, " +
+            // Caps are PER EVENT, so the honest ceiling is cap x live events —
+            // printing the global total against a per-event cap read as
+            // "ground 81/50", which looks like a broken cap and is not.
+            int fireCount = Mathf.Max(1, _events.Count);
+            return $"FireFront: burning {_burning.Count}/{FireConfig.EffectiveMaxConcurrentBurning * fireCount}, " +
                    $"queued {_queue.Count}/{_queue.Capacity}, " +
-                   $"ground {_groundBurning.Count}/{FireConfig.EffectiveGroundMaxConcurrent} (enabled {FireConfig.GroundSpreadEnabled.Value}, vfxcap {FireConfig.EffectiveGroundVfxMaxConcurrent}, dmgcap {FireConfig.EffectiveGroundDamageMaxConcurrent}, raining {ValheimBridge.IsRaining()}), " +
+                   $"ground {_groundBurning.Count}/{FireConfig.EffectiveGroundMaxConcurrent * fireCount} (enabled {FireConfig.GroundSpreadEnabled.Value}, vfxcap {FireConfig.EffectiveGroundVfxMaxConcurrent}, dmgcap {FireConfig.EffectiveGroundDamageMaxConcurrent}, raining {ValheimBridge.IsRaining()}), " +
                    $"burn {FireConfig.BurnDurationSeconds.Value}s (maturity {(FireConfig.SpreadMaturityFraction.Value * 100f):F0}%), " +
                    $"radius {FireConfig.SpreadRadius.Value}m, " +
                    $"groundradius {FireConfig.GroundSpreadRadius.Value}m, " +
