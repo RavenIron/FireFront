@@ -38,6 +38,11 @@
     straight lines.
   - **Default threshold moved 0.45 → 0.65**, so flames carry most of the burn
     and smouldering is the tail rather than the majority of it.
+
+  Confirmed by eye 2026-08-29 — "that reads better". The failure of the first
+  version was treating smouldering as LESS fire; the suggestion had asked for
+  INTERMITTENT fire, which is a different thing and the part that makes it read
+  as still alive rather than finished.
 ## 0.19.12
 
 - **Fires stop drawing full flames forever — they drop to smouldering.** A
