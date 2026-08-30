@@ -21,3 +21,6 @@ dist/
 # OS
 Thumbs.db
 .DS_Store
+
+# Release zips belong in dist/ (ignored) and on the GitHub release, not in source control.
+/*.zip
