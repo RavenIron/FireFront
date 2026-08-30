@@ -47,7 +47,7 @@ namespace FireFront.Commands
                 args => FireDebug(args));
 
             new Terminal.ConsoleCommand("fireset",
-                "FireFront: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|enabled> <value>",
+                "FireFront: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|burntheworld|enabled> <value>",
                 args => FireSet(args));
 
             new Terminal.ConsoleCommand("firelistprefabs",
@@ -245,7 +245,7 @@ namespace FireFront.Commands
         {
             if (args.Length < 3)
             {
-                Say(args, "Usage: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|enabled> <value>");
+                Say(args, "Usage: fireset <burnduration|firematurity|spreadradius|maxburning|queuesize|spreadinterval|trees|burnbuildings|vfx|procedural|groundenabled|groundcellsize|groundradius|groundburnduration|groundmax|groundvfxmax|grounddamagemax|firehurts|firehurtsplayeronly|firehurtsradius|firedamage|firetickinterval|extinguishradius|douseimmunity|rainsuppress|rainmultiplier|scorchmarks|scorchlifetime|dirtpaint|dirtpaintradius|rampenabled|rampduration|rampstart|exhaustionenabled|fuelregrow|windbias|windupwindchance|windinfluence|dousingradius|persistfires|firebreaks|treeregrowth|treeregrowthseconds|groundleashenabled|groundleashdistance|lowspec|debug|burntheworld|enabled> <value>");
                 return;
             }
 
@@ -272,6 +272,19 @@ namespace FireFront.Commands
                     break;
                 case "spreadinterval":
                     if (float.TryParse(raw, out float si)) { FireConfig.SpreadCheckInterval.Value = si; Ok(args, key, si); }
+                    else Bad(args, raw);
+                    break;
+                case "burntheworld":
+                    if (bool.TryParse(raw, out bool btw))
+                    {
+                        FireConfig.WatchTheWorldBurn.Value = btw;
+                        Say(args, $"burntheworld = {btw} (in force: {FireConfig.ApocalypseActive}). " +
+                                  $"maturity {FireConfig.EffectiveSpreadMaturityFraction}, firebreaks {FireConfig.EffectiveGroundFirebreaksEnabled}, " +
+                                  $"water {FireConfig.EffectiveGroundWaterBlocksSpreadEnabled}, leash {FireConfig.EffectiveGroundMaxSpreadDistanceEnabled}, " +
+                                  $"ramp {FireConfig.EffectiveFireRampEnabled}, regrow {FireConfig.EffectiveTreeRegrowthEnabled}, " +
+                                  $"burn cap {FireConfig.EffectiveMaxConcurrentBurning}/fire, ground {FireConfig.EffectiveGroundMaxConcurrent}/fire, " +
+                                  $"interval {FireConfig.EffectiveSpreadCheckInterval}s. Your own settings are untouched.");
+                    }
                     else Bad(args, raw);
                     break;
                 case "debug":
@@ -712,6 +725,7 @@ namespace FireFront.Commands
                 // lowspec False.
                 { "lowspec", FireConfig.LowSpecPreset },
                 { "debug", FireConfig.VerboseLogging },
+                { "burntheworld", FireConfig.WatchTheWorldBurn },
                 { "burnduration", FireConfig.BurnDurationSeconds },
                 { "firematurity", FireConfig.SpreadMaturityFraction },
                 { "spreadradius", FireConfig.SpreadRadius },

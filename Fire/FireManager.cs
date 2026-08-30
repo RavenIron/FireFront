@@ -412,8 +412,8 @@ namespace FireFront.Fire
         // that it is genuinely a separate fire. Ground leash (how far one fire
         // travels) plus a spread reach of slack.
         private float EventJoinRadius =>
-            (FireConfig.GroundMaxSpreadDistanceEnabled.Value ? FireConfig.GroundMaxSpreadDistance.Value : 100f)
-            + FireConfig.SpreadRadius.Value + 8f;
+            (FireConfig.EffectiveGroundMaxSpreadDistanceEnabled ? FireConfig.GroundMaxSpreadDistance.Value : 100f)
+            + FireConfig.EffectiveSpreadRadius + 8f;
 
         /// <summary>
         /// The event this position belongs to, creating one if nothing is near
@@ -516,7 +516,7 @@ namespace FireFront.Fire
         {
             FireEvent ev = EventById(eventId);
             if (ev == null) return GetRampFraction();
-            if (!FireConfig.FireRampEnabled.Value) return 1f;
+            if (!FireConfig.EffectiveFireRampEnabled) return 1f;
 
             float start = Mathf.Clamp01(FireConfig.FireRampStartFraction.Value);
             float dur = Mathf.Max(1f, FireConfig.FireRampDurationSeconds.Value);
@@ -682,7 +682,7 @@ namespace FireFront.Fire
 
         private float GetRampFraction()
         {
-            if (!FireConfig.FireRampEnabled.Value) return 1f;
+            if (!FireConfig.EffectiveFireRampEnabled) return 1f;
             if (_fireStartTime < 0f) return FireConfig.FireRampStartFraction.Value;
 
             float elapsed = (Time.time - _fireStartTime) + _restoredRampAge;
@@ -807,13 +807,13 @@ namespace FireFront.Fire
             {
                 if ((kv.Value.Position - origin).sqrMagnitude <= radiusSqr) _scratch.Add(kv.Key);
             }
-            float wetUntil = Time.time + FireConfig.DouseImmunitySeconds.Value;
+            float wetUntil = Time.time + FireConfig.EffectiveDouseImmunitySeconds;
             foreach (ZDOID id in _scratch)
             {
                 _burning.Remove(id);
                 _queue.Remove(id);
                 RemoveVfxFor(id);
-                if (FireConfig.DouseImmunitySeconds.Value > 0f) _dousedUntil[id] = wetUntil;
+                if (FireConfig.EffectiveDouseImmunitySeconds > 0f) _dousedUntil[id] = wetUntil;
             }
             if (_scratch.Count > 0)
                 FireLogger.Debug($"Extinguished {_scratch.Count} burning object(s) within {radius:F1}m.");
@@ -835,7 +835,7 @@ namespace FireFront.Fire
                 }
             }
 
-            float dousedUntil = Time.time + FireConfig.DouseImmunitySeconds.Value;
+            float dousedUntil = Time.time + FireConfig.EffectiveDouseImmunitySeconds;
             foreach (GroundCellKey key in _groundScratch)
             {
                 float y = _groundBurning[key].Y;
@@ -851,7 +851,7 @@ namespace FireFront.Fire
                 // report: "the ramp is too aggressive to fight" — the ramp was
                 // fine, the dousing just didn't hold). Reuses the exhaustion
                 // dictionary; TryIgniteGroundCell already refuses these cells.
-                if (FireConfig.DouseImmunitySeconds.Value > 0f)
+                if (FireConfig.EffectiveDouseImmunitySeconds > 0f)
                     _groundExhausted[key] = dousedUntil;
             }
 
@@ -945,8 +945,8 @@ namespace FireFront.Fire
                 FireLogger.Debug($"Extinguished: {ValheimBridge.NameOf(target)}");
             _queue.Remove(id.Value);
             RemoveVfxFor(id.Value);
-            if (FireConfig.DouseImmunitySeconds.Value > 0f)
-                _dousedUntil[id.Value] = Time.time + FireConfig.DouseImmunitySeconds.Value;
+            if (FireConfig.EffectiveDouseImmunitySeconds > 0f)
+                _dousedUntil[id.Value] = Time.time + FireConfig.EffectiveDouseImmunitySeconds;
         }
 
         public void ClearAll()
@@ -1225,30 +1225,30 @@ namespace FireFront.Fire
             return $"FireFront: burning {_burning.Count}/{FireConfig.EffectiveMaxConcurrentBurning * fireCount}, " +
                    $"queued {_queue.Count}/{_queue.Capacity}, " +
                    $"ground {_groundBurning.Count}/{FireConfig.EffectiveGroundMaxConcurrent * fireCount} (enabled {FireConfig.GroundSpreadEnabled.Value}, vfxcap {FireConfig.EffectiveGroundVfxMaxConcurrent}, dmgcap {FireConfig.EffectiveGroundDamageMaxConcurrent}, raining {ValheimBridge.IsRaining()}), " +
-                   $"burn {FireConfig.BurnDurationSeconds.Value}s (maturity {(FireConfig.SpreadMaturityFraction.Value * 100f):F0}%), " +
-                   $"radius {FireConfig.SpreadRadius.Value}m, " +
-                   $"groundradius {FireConfig.GroundSpreadRadius.Value}m, " +
+                   $"burn {FireConfig.BurnDurationSeconds.Value}s (maturity {(FireConfig.EffectiveSpreadMaturityFraction * 100f):F0}%), " +
+                   $"radius {FireConfig.EffectiveSpreadRadius}m, " +
+                   $"groundradius {FireConfig.EffectiveGroundSpreadRadius}m, " +
                    $"interval {FireConfig.EffectiveSpreadCheckInterval}s, " +
-                   $"lowspec {FireConfig.LowSpecPreset.Value}, " +
+                   $"lowspec {FireConfig.LowSpecPreset.Value}, burntheworld {FireConfig.ApocalypseActive}, " +
                    $"fires {_events.Count}, " +
                    $"trees {FireConfig.BurnTreesAndLogs.Value}, " +
                    $"burnbuildings {FireConfig.BurnPlayerBuildings.Value}, " +
                    $"vfx '{FireConfig.VfxPrefabName.Value}', procedural {FireConfig.UseProceduralVfx.Value}, " +
                    $"hurts {FireConfig.FireHurtsEnabled.Value} (playerOnly {FireConfig.FireHurtsPlayerOnly.Value}, {FireConfig.FireDamagePerTick.Value}dmg/{FireConfig.FireDamageTickInterval.Value}s), " +
                    $"dirtpaint {FireConfig.UseVanillaDirtPaint.Value}, " +
-                   $"exhaustion {FireConfig.GroundFuelExhaustionEnabled.Value} (regrow {FireConfig.GroundFuelRegrowSeconds.Value}s), " +
-                   $"treeregrowth {FireConfig.TreeRegrowthEnabled.Value} (after {FireConfig.TreeRegrowthSeconds.Value}s, pending {_pendingRegrowth.Count}), " +
+                   $"exhaustion {FireConfig.EffectiveGroundFuelExhaustionEnabled} (regrow {FireConfig.GroundFuelRegrowSeconds.Value}s), " +
+                   $"treeregrowth {FireConfig.EffectiveTreeRegrowthEnabled} (after {FireConfig.TreeRegrowthSeconds.Value}s, pending {_pendingRegrowth.Count}), " +
                    $"pendingignite {_pendingIgniteResolutions.Count}, " +
-                   $"firebreaks {FireConfig.GroundFirebreaksEnabled.Value}, " +
-                   $"waterblocks {FireConfig.GroundWaterBlocksSpreadEnabled.Value}, " +
+                   $"firebreaks {FireConfig.EffectiveGroundFirebreaksEnabled}, " +
+                   $"waterblocks {FireConfig.EffectiveGroundWaterBlocksSpreadEnabled}, " +
                    $"realpermanent (paintedcells {_groundPainted.Count}, regrowntrees {_treesRegrownCount}), " +
                    $"wind {FireConfig.WindSpreadBiasEnabled.Value} (upwindchance {FireConfig.WindUpwindIgniteChance.Value:F2}, " +
                    $"influence {FireConfig.WindInfluence.Value:F2}, live intensity {WindIntensityForStatus()}), " +
                    $"dousingradius {FireConfig.DousingBombRadius.Value}m, " +
-                   $"douseimmunity {FireConfig.DouseImmunitySeconds.Value}s (wet {_dousedUntil.Count}), " +
+                   $"douseimmunity {FireConfig.EffectiveDouseImmunitySeconds}s (wet {_dousedUntil.Count}), " +
                    $"persist {FireConfig.PersistFiresEnabled.Value}, " +
-                   $"groundleash {FireConfig.GroundMaxSpreadDistanceEnabled.Value} ({FireConfig.GroundMaxSpreadDistance.Value}m), " +
-                   $"ramp {(GetRampFraction() * 100f):F0}% (enabled {FireConfig.FireRampEnabled.Value}, start {(FireConfig.FireRampStartFraction.Value * 100f):F0}%, duration {FireConfig.FireRampDurationSeconds.Value}s), " +
+                   $"groundleash {FireConfig.EffectiveGroundMaxSpreadDistanceEnabled} ({FireConfig.GroundMaxSpreadDistance.Value}m), " +
+                   $"ramp {(GetRampFraction() * 100f):F0}% (enabled {FireConfig.EffectiveFireRampEnabled}, start {(FireConfig.FireRampStartFraction.Value * 100f):F0}%, duration {FireConfig.FireRampDurationSeconds.Value}s), " +
                    $"enabled {FireConfig.Enabled.Value}";
         }
 
@@ -1284,7 +1284,7 @@ namespace FireFront.Fire
         /// </summary>
         private void IgniteAdjacentGroundCells(GroundCellKey originKey, float y)
         {
-            if (FireConfig.RainSuppressesGroundFire.Value && ValheimBridge.IsRaining()) return;
+            if (FireConfig.EffectiveRainSuppressesGroundFire && ValheimBridge.IsRaining()) return;
 
             // Wind is global, not per-zone, so both reads happen once here per
             // spread call rather than once per neighbor.
@@ -1380,7 +1380,7 @@ namespace FireFront.Fire
                     // the terrain along the origin→destination line; if any point
                     // is cleared/cultivated, the ground path is broken and this
                     // cell can't be reached by ground-level spread from here.
-                    if (FireConfig.GroundFirebreaksEnabled.Value && GroundPathCrossesFirebreak(origin, center)) continue;
+                    if (FireConfig.EffectiveGroundFirebreaksEnabled && GroundPathCrossesFirebreak(origin, center)) continue;
 
                     TryIgniteGroundCell(key, origin.y);
                 }
@@ -1455,7 +1455,7 @@ namespace FireFront.Fire
             // The exhausted dict holds burnout regrow timers AND douse immunity
             // (see ExtinguishGroundNear), so it must stay consultable when
             // either feature is on — not only fuel exhaustion.
-            if ((FireConfig.GroundFuelExhaustionEnabled.Value || FireConfig.DouseImmunitySeconds.Value > 0f) &&
+            if ((FireConfig.EffectiveGroundFuelExhaustionEnabled || FireConfig.EffectiveDouseImmunitySeconds > 0f) &&
                 _groundExhausted.TryGetValue(key, out float exhaustedUntil) && Time.time < exhaustedUntil) return;
 
             Vector3 approxCenter = CellCenter(key, y);
@@ -1464,7 +1464,7 @@ namespace FireFront.Fire
             // no grass fuel on it, so ground fire shouldn't cross it. Checked
             // before the ground-max/ramp bookkeeping below since this is a hard
             // "no fuel here" rule, not a capacity limit.
-            if (FireConfig.GroundFirebreaksEnabled.Value && IsFirebreakAt(approxCenter)) return;
+            if (FireConfig.EffectiveGroundFirebreaksEnabled && IsFirebreakAt(approxCenter)) return;
 
             // Leash: cell-to-adjacent-cell propagation (IgniteAdjacentGroundCells)
             // otherwise has NO distance limit at all, only a cap on how many cells
@@ -1481,7 +1481,7 @@ namespace FireFront.Fire
             // second fire could never spread.
             int cellEventId = EventForPosition(approxCenter, 0L);
             FireEvent cellEvent = EventById(cellEventId);
-            if (FireConfig.GroundMaxSpreadDistanceEnabled.Value && cellEvent != null)
+            if (FireConfig.EffectiveGroundMaxSpreadDistanceEnabled && cellEvent != null)
             {
                 float maxDist = FireConfig.GroundMaxSpreadDistance.Value;
                 if ((approxCenter - cellEvent.Origin).sqrMagnitude > maxDist * maxDist) return;
@@ -1509,7 +1509,7 @@ namespace FireFront.Fire
             // spread clean through the water around it). Checked using the
             // REAL sampled height, not the approximate inherited y, since
             // that's the only value we can trust to be accurate here.
-            if (FireConfig.GroundWaterBlocksSpreadEnabled.Value)
+            if (FireConfig.EffectiveGroundWaterBlocksSpreadEnabled)
             {
                 float waterLevel = ValheimBridge.GetWaterLevel();
                 if (realY <= waterLevel)
@@ -1520,7 +1520,7 @@ namespace FireFront.Fire
             }
 
             float duration = FireConfig.GroundBurnDurationSeconds.Value;
-            if (FireConfig.RainSuppressesGroundFire.Value && ValheimBridge.IsRaining())
+            if (FireConfig.EffectiveRainSuppressesGroundFire && ValheimBridge.IsRaining())
             {
                 duration *= FireConfig.RainGroundBurnDurationMultiplier.Value;
             }
@@ -1865,7 +1865,7 @@ namespace FireFront.Fire
             int killed = 0;
             foreach (ZDOID id in _scratch)
             {
-                if (killed >= FireConfig.MaxKillsPerCycle.Value) break;
+                if (killed >= FireConfig.EffectiveMaxKillsPerCycle) break;
 
                 BurningState state = _burning[id];
 
@@ -1894,7 +1894,7 @@ namespace FireFront.Fire
                 _burning.Remove(id);
                 FireLogger.Debug($"Burned down: {ValheimBridge.NameOf(target)}");
 
-                if (FireConfig.TreeRegrowthEnabled.Value && ValheimBridge.KindOf(target) == BurnKind.Tree)
+                if (FireConfig.EffectiveTreeRegrowthEnabled && ValheimBridge.KindOf(target) == BurnKind.Tree)
                 {
                     EnqueueRegrowth(new PendingRegrowth
                     {
@@ -1952,7 +1952,7 @@ namespace FireFront.Fire
             {
                 float y = _groundBurning[key].Y;
                 _groundBurning.Remove(key);
-                if (FireConfig.GroundFuelExhaustionEnabled.Value)
+                if (FireConfig.EffectiveGroundFuelExhaustionEnabled)
                     _groundExhausted[key] = now + FireConfig.GroundFuelRegrowSeconds.Value;
                 RemoveGroundVfxFor(key);
                 LeaveScorchMark(key, y);
@@ -1964,7 +1964,7 @@ namespace FireFront.Fire
             // a long player-sustained fire (one that never fully dies) would keep
             // _groundExhausted growing for the entire session with no eviction —
             // this is what caused the runaway entry count.
-            if ((FireConfig.GroundFuelExhaustionEnabled.Value || FireConfig.DouseImmunitySeconds.Value > 0f) && _groundExhausted.Count > 0)
+            if ((FireConfig.EffectiveGroundFuelExhaustionEnabled || FireConfig.EffectiveDouseImmunitySeconds > 0f) && _groundExhausted.Count > 0)
             {
                 _exhaustedScratch.Clear();
                 foreach (KeyValuePair<GroundCellKey, float> kv in _groundExhausted)
@@ -2300,7 +2300,7 @@ namespace FireFront.Fire
                              $"zdoCandidates={_zdoCandidates.Count}, " +
                              $"candidates within SpreadRadius of first burner={candidatesInRange}, " +
                              $"nearest candidate='{nearestName}' at {nearestDist:F2}m " +
-                             $"(SpreadRadius={FireConfig.SpreadRadius.Value}m). " +
+                             $"(SpreadRadius={FireConfig.EffectiveSpreadRadius}m). " +
                              "If candidatesInRange is 0 and nearestDist is well outside SpreadRadius, " +
                              "there simply wasn't a burnable piece close enough — not a bug. If AllPieces.Count " +
                              "looks wrong (0, or missing pieces you know are placed), that's the real lead.");
@@ -2311,9 +2311,9 @@ namespace FireFront.Fire
             if (_burning.Count == 0 && _groundBurning.Count == 0) return;
 
             float ramp = GetRampFraction();
-            float effectiveSpreadRadius = FireConfig.SpreadRadius.Value * ramp;
+            float effectiveSpreadRadius = FireConfig.EffectiveSpreadRadius * ramp;
             float objRadiusSqr = effectiveSpreadRadius * effectiveSpreadRadius;
-            float groundRadius = FireConfig.GroundSpreadRadius.Value * ramp;
+            float groundRadius = FireConfig.EffectiveGroundSpreadRadius * ramp;
 
             // Candidate picture is CACHED, not rebuilt per cycle. Rebuilding ran
             // three FindObjectsOfType scene scans plus the ZDO sector sweep every
@@ -2352,7 +2352,7 @@ namespace FireFront.Fire
             // burns, glows, and hurts from second one — it just isn't throwing
             // fire yet. Ground fire's own cell-to-cell crawl is untouched: that
             // channel is already paced, and it's how fire creeps INTO a stand.
-            float maturitySeconds = FireConfig.BurnDurationSeconds.Value * FireConfig.SpreadMaturityFraction.Value;
+            float maturitySeconds = FireConfig.BurnDurationSeconds.Value * FireConfig.EffectiveSpreadMaturityFraction;
             foreach (ZDOID burnerId in _scratch)
             {
                 if (!_burning.TryGetValue(burnerId, out BurningState burnerState)) continue;
@@ -2443,8 +2443,8 @@ namespace FireFront.Fire
             _zdoCandidates.Clear();
             bool zdoScanRan = false;
 
-            float reach = Mathf.Max(FireConfig.SpreadRadius.Value, FireConfig.GroundSpreadRadius.Value);
-            float leash = FireConfig.GroundMaxSpreadDistanceEnabled.Value
+            float reach = Mathf.Max(FireConfig.EffectiveSpreadRadius, FireConfig.EffectiveGroundSpreadRadius);
+            float leash = FireConfig.EffectiveGroundMaxSpreadDistanceEnabled
                 ? FireConfig.GroundMaxSpreadDistance.Value
                 : 100f;
 

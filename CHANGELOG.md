@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.19.11
+
+- **`WatchTheWorldBurn` — one switch for maximum devastation.** The opposite
+  number to `LowSpecPreset`, live-settable with `fireset burntheworld true`.
+  Fire becomes contagious the instant it lights; dirt paths, cultivated ground
+  and **water** stop being firebreaks; rain no longer suppresses it; burned
+  ground can relight immediately; fires start at full strength instead of
+  ramping; nothing regrows; extinguishing no longer keeps anything wet; spread
+  reach goes to maximum and the spread cycle to its fastest; the burning and
+  ground caps go to their ceiling — **per fire**, which since 0.19.9 means
+  several simultaneous blazes each get one.
+
+  Two deliberate restraints:
+  - **Your visual caps are left exactly as you set them.**
+    `GroundVfxMaxConcurrent` and `GroundDamageMaxConcurrent` are what actually
+    cost frames, so someone who wants the world to burn still decides how much
+    of it their machine renders. A preset that maxed those too would just be a
+    way to lock up a GPU.
+  - **If `LowSpecPreset` is also on, low spec wins.** A machine that cannot
+    cope is a harder constraint than a preference for spectacle, and getting
+    that precedence backwards ends in somebody's game freezing.
+
+  Like `LowSpecPreset` it resolves at read time and never writes to your
+  config, so turning it off restores your own values exactly. `firestatus`
+  shows a `burntheworld` flag reporting whether it is actually in force
+  (which is false while low-spec overrides it).
 ## 0.19.10
 
 - **`fireset debug true|false` — debug logging is now live-settable and

@@ -61,6 +61,7 @@ namespace FireFront.Config
         public static ConfigEntry<bool> GroundMaxSpreadDistanceEnabled;
         public static ConfigEntry<float> GroundMaxSpreadDistance;
         public static ConfigEntry<bool> LowSpecPreset;
+        public static ConfigEntry<bool> WatchTheWorldBurn;
 
         // --- Low-spec preset -------------------------------------------------
         //
@@ -87,10 +88,14 @@ namespace FireFront.Config
         private static bool LowSpec => LowSpecPreset != null && LowSpecPreset.Value;
 
         public static int EffectiveMaxConcurrentBurning =>
-            LowSpec ? Mathf.Min(MaxConcurrentBurning.Value, LowSpecMaxConcurrentBurning) : MaxConcurrentBurning.Value;
+            LowSpec ? Mathf.Min(MaxConcurrentBurning.Value, LowSpecMaxConcurrentBurning)
+            : Apocalypse ? Mathf.Max(MaxConcurrentBurning.Value, BurnMaxConcurrentBurning)
+            : MaxConcurrentBurning.Value;
 
         public static int EffectiveGroundMaxConcurrent =>
-            LowSpec ? Mathf.Min(GroundMaxConcurrent.Value, LowSpecGroundMaxConcurrent) : GroundMaxConcurrent.Value;
+            LowSpec ? Mathf.Min(GroundMaxConcurrent.Value, LowSpecGroundMaxConcurrent)
+            : Apocalypse ? Mathf.Max(GroundMaxConcurrent.Value, BurnGroundMaxConcurrent)
+            : GroundMaxConcurrent.Value;
 
         public static int EffectiveGroundVfxMaxConcurrent =>
             LowSpec ? Mathf.Min(GroundVfxMaxConcurrent.Value, LowSpecGroundVfxMaxConcurrent) : GroundVfxMaxConcurrent.Value;
@@ -101,19 +106,107 @@ namespace FireFront.Config
         /// <summary>Scorch decals are cosmetic; the preset drops them entirely.</summary>
         public static bool EffectiveScorchMarksEnabled => !LowSpec && ScorchMarksEnabled.Value;
 
+        // --- Watch The World Burn ------------------------------------------
+        //
+        // LowSpecPreset's opposite number: one switch that takes every brake
+        // off fire at once. It is deliberately NOT a "max everything" button —
+        // the visual caps (GroundVfxMaxConcurrent, GroundDamageMaxConcurrent)
+        // are left exactly as the player set them, because those are what cost
+        // frames, and someone who wants the world to burn still gets to decide
+        // how much of it they can afford to render.
+        //
+        // Same two properties as LowSpecPreset: it resolves at read time and
+        // never writes to the config, so switching it off restores the
+        // player's own values exactly.
+        //
+        // If BOTH presets are somehow on, LOW SPEC WINS. A machine that cannot
+        // cope is a harder constraint than a preference for spectacle, and the
+        // failure mode of getting that backwards is someone's game locking up.
+
+        private const int BurnMaxConcurrentBurning = 200;   // config max
+        private const int BurnGroundMaxConcurrent = 500;
+        private const float BurnSpreadCheckInterval = 0.25f; // config min = fastest
+        private const float BurnSpreadRadius = 15f;          // config max
+        private const float BurnGroundSpreadRadius = 20f;    // config max
+        private const int BurnMaxKillsPerCycle = 50;         // config max
+
+        private static bool Apocalypse =>
+            WatchTheWorldBurn != null && WatchTheWorldBurn.Value && !LowSpec;
+
+        /// <summary>True when the world-burning preset is actually in force.</summary>
+        public static bool ApocalypseActive => Apocalypse;
+
+        /// <summary>Fire becomes contagious the instant it lights.</summary>
+        public static float EffectiveSpreadMaturityFraction =>
+            Apocalypse ? 0f : SpreadMaturityFraction.Value;
+
+        /// <summary>Paths, cultivated ground and water stop being firebreaks.</summary>
+        public static bool EffectiveGroundFirebreaksEnabled =>
+            !Apocalypse && GroundFirebreaksEnabled.Value;
+
+        public static bool EffectiveGroundWaterBlocksSpreadEnabled =>
+            !Apocalypse && GroundWaterBlocksSpreadEnabled.Value;
+
+        public static bool EffectiveRainSuppressesGroundFire =>
+            !Apocalypse && RainSuppressesGroundFire.Value;
+
+        /// <summary>Burned ground can relight immediately instead of staying spent.</summary>
+        public static bool EffectiveGroundFuelExhaustionEnabled =>
+            !Apocalypse && GroundFuelExhaustionEnabled.Value;
+
+        /// <summary>No leash: a fire can walk as far as it can find fuel.</summary>
+        public static bool EffectiveGroundMaxSpreadDistanceEnabled =>
+            !Apocalypse && GroundMaxSpreadDistanceEnabled.Value;
+
+        /// <summary>Fires start at full strength rather than ramping up.</summary>
+        public static bool EffectiveFireRampEnabled =>
+            !Apocalypse && FireRampEnabled.Value;
+
+        /// <summary>Nothing grows back.</summary>
+        public static bool EffectiveTreeRegrowthEnabled =>
+            !Apocalypse && TreeRegrowthEnabled.Value;
+
+        /// <summary>Dousing no longer keeps anything wet.</summary>
+        public static float EffectiveDouseImmunitySeconds =>
+            Apocalypse ? 0f : DouseImmunitySeconds.Value;
+
+        public static float EffectiveSpreadRadius =>
+            Apocalypse ? Mathf.Max(SpreadRadius.Value, BurnSpreadRadius) : SpreadRadius.Value;
+
+        public static float EffectiveGroundSpreadRadius =>
+            Apocalypse ? Mathf.Max(GroundSpreadRadius.Value, BurnGroundSpreadRadius) : GroundSpreadRadius.Value;
+
+        public static int EffectiveMaxKillsPerCycle =>
+            Apocalypse ? Mathf.Max(MaxKillsPerCycle.Value, BurnMaxKillsPerCycle) : MaxKillsPerCycle.Value;
+
         /// <summary>
         /// The odd one out: a LONGER interval is the cheaper one, so this takes
         /// the max rather than the min. Fewer spread cycles per second means
         /// fewer candidate rebuilds, which is the dominant per-cycle cost.
         /// </summary>
         public static float EffectiveSpreadCheckInterval =>
-            LowSpec ? Mathf.Max(SpreadCheckInterval.Value, LowSpecSpreadCheckInterval) : SpreadCheckInterval.Value;
+            LowSpec ? Mathf.Max(SpreadCheckInterval.Value, LowSpecSpreadCheckInterval)
+            : Apocalypse ? Mathf.Min(SpreadCheckInterval.Value, BurnSpreadCheckInterval)
+            : SpreadCheckInterval.Value;
 
         public static void Bind(ConfigFile config)
         {
             Enabled = config.Bind(
                 "General", "Enabled", true,
                 "Master switch. When false, no burn timers run and no spread occurs.");
+
+            WatchTheWorldBurn = config.Bind(
+                "General", "WatchTheWorldBurn", false,
+                "Takes every brake off fire at once, for people who want to watch the world burn. " +
+                "Fire becomes contagious the instant it lights; dirt paths, cultivated ground and " +
+                "WATER stop being firebreaks; rain no longer suppresses it; burned ground can " +
+                "relight immediately; fires start at full strength; nothing regrows; extinguishing " +
+                "no longer keeps anything wet; spread reach and the burning/ground caps go to " +
+                "maximum and the spread cycle to its fastest. Your VISUAL caps are deliberately " +
+                "left alone — those are what cost frames, and you still choose how much of the " +
+                "apocalypse your machine renders. Your own settings are NOT overwritten; turning " +
+                "it off restores everything. If LowSpecPreset is also on, LOW SPEC WINS. " +
+                "Toggle live with 'fireset burntheworld true'.");
 
             LowSpecPreset = config.Bind(
                 "General", "LowSpecPreset", false,
