@@ -25,6 +25,21 @@
   event id, are clustered back into events by position on the first tick.
   `firestatus` reports a `fires N` count.
 
+  **VERIFIED LIVE 2026-08-29** on a clean single-mod test server. Two fires lit
+  ~1035m apart produced two events, and the second one spread — the case that
+  was dead before:
+
+  ```
+  [EVENT] event 1 born at (-78.86, 83.44, 165.06) (igniter 775624); 1 active.
+  [EVENT] event 2 born at (-230.65, 33.51, -859.07) (igniter 775624); 2 active.
+
+  burning 1/50, queued 0/20, ground  0/50, fires 1     <- first fire only
+  burning 3/50, queued 0/20, ground 10/50, fires 2     <- second fire lit AND spreading
+  ```
+
+  `zdoCandidates=21` throughout, so both blazes were getting a candidate sweep
+  rather than one starving the other.
+
 ## 0.19.8
 
 - **Spread stopped testing every burnable in the world against every fire.**

@@ -91,6 +91,24 @@ the memory notes in the assistant's store point here.
    unaccounted-for hash — the game and server were running and locked their
    DLLs. Hash-verify against `bin\Release\net472\FireFront.dll` after copying.
 
+5. **Dedicated FireFront test server — USE THIS, not the Steam install.**
+   `C:\Users\donfr\FireFrontTestServer` (created 2026-08-29): a full copy of
+   the dedicated server stripped to TWO plugins, FireFront and Server
+   Devcommands, with its own `ff-test.log` and its own BepInEx log. Runs on
+   **port 2458** so it never collides with Ravenrest on 2456.
+   WHY it exists: the Steam server install is now the live Ravenrest modpack
+   (26 plugins). Two servers sharing that install share one FireFront.dll —
+   so a test server could not run a different build than Ravenrest — and its
+   mandatory-mod list (Jotunn, Seasonality, VikingOS, WardIsLove...) rejected
+   the owner's client with "incompatible version" every time. A minimal server
+   demands nothing of a client and restores the property CLAUDE.md asks for:
+   a failure there is unambiguously ours.
+   `DebugLogging = true` is set in its config — the `[EVENT]` lines are
+   debug-gated, and without them a failed multi-fire test cannot distinguish
+   "no event created" from "event created but no candidates". Turn it OFF
+   before any frametime measurement; it is noisy by design (0.18.7).
+   Ravenrest's own install is untouched; do not stop it without asking.
+
 ## Operational facts that cost real time — do not relearn
 
 - **The owner plays on the `Default` Gale profile, NOT `raveniron`.**
