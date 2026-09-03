@@ -1,30 +1,35 @@
-# FireFront — session handoff (updated 2026-08-29)
+# FireFront — session handoff (updated 2026-09-03)
 
 Resume point for the next working session. Read this before touching anything;
 the memory notes in the assistant's store point here.
 
 ## Where everything stands
 
-- **Repo**: `main` at **0.19.8**, pushed to github.com/RavenIron/FireFront,
-  every version tagged through `v0.19.8`.
-- **Deployed builds are MIXED as of 2026-08-29** — dedicated server on
-  0.19.7, `Default` profile on 0.19.8, `raveniron` on an unaccounted-for
-  hash. The game and server were running and locked their DLLs when 0.19.8
-  went out. Redeploy and hash-verify before drawing any conclusion from a
-  log. See the profile note below — the owner plays `Default`.
-- **A "version string" grep of the DLL is NOT a version check.** FireFront's
-  own log messages contain literals like `0.17.2` and `0.18.7`, so scanning a
-  DLL for version-shaped strings returns a list, not an answer, and the
-  newest entry is not necessarily the build. Hash against
-  `bin\Release\net472\FireFront.dll`, or read the boot log line.
-- **Testers**: at least one is on **0.19.3** (see item 4 — the log proved it),
-  others may still be on the **0.18.0** Discord zip.
-  `dist\RavenIron-FireFront-0.19.8.zip` is built and version-guard-checked,
-  but do NOT ship it before item 4's burn test.
-  **Owner's call 2026-08-28: no Discord post needed** — the regenerated
-  split in `dist\DISCORD_POST_READY.txt` exists but is not to be shipped
-  unless the owner asks.
-
+- **Repo**: `main` at **0.19.14**, pushed to github.com/RavenIron/FireFront,
+  every version tagged through `v0.19.14`. GitHub releases published for
+  v0.19.8, v0.19.9, v0.19.11 and v0.19.14 (each with the bare DLL and the
+  mod-manager zip attached, SHA256s in the notes).
+- **Deployed builds: 0.19.14 everywhere** — the test server, the Steam
+  install, and all four Gale profiles. Verified by reading the assembly
+  version, not by hashing (a rebuild changes the hash for identical source)
+  and not by grepping the DLL for version-shaped strings (FireFront's own log
+  text contains literals like `0.17.2`, so a grep returns a list, not an
+  answer). Use `[System.Diagnostics.FileVersionInfo]::GetVersionInfo(path)`
+  or read the boot log line.
+- **The owner plays the `Default` Gale profile**, not `raveniron`. See the
+  operational note below — a whole session's client deploys once went to the
+  wrong profile.
+- **Config defaults only reach installs that never ran an older build.**
+  BepInEx persists values to disk, so changing a default in code does nothing
+  where the key is already written. This bit twice in one day: 0.19.13's new
+  `SmoulderAfterFraction` of 0.65 was silently overridden by the 0.45 that
+  0.19.12 had written. Set it explicitly on existing installs.
+- **Testers**: at least one is on **0.19.3** (their log proved it), others may
+  still be on the **0.18.0** Discord zip. Everything they are missing is in
+  the v0.19.14 release.
+  **Owner's call 2026-08-28: no Discord post needed** — the regenerated split
+  in `dist\DISCORD_POST_READY.txt` exists but is not to be shipped unless the
+  owner asks.
 ## In flight — finish these first
 
 1. ~~**Relay verification, 3 of 5 commands outstanding.**~~ **DONE 2026-08-28
@@ -63,51 +68,98 @@ the memory notes in the assistant's store point here.
 3. **Ship to testers** — ON HOLD, owner said no Discord post needed
    (2026-08-28). The zip stays ready in dist\ if that changes.
 
-4. **The tester frametime spike — DIAGNOSED, fix built, ONE TEST OUTSTANDING.**
-   Resolved 2026-08-29 from the tester's own Player.log. Facts, replacing the
-   earlier guesswork:
-   - They run **0.19.3, hosting** (`IsServer=True`) — NOT the 0.18.0 Discord
-     zip. The earlier "they're just on an old build" theory was WRONG; they
-     already had every prior performance fix.
+4. ~~**The tester frametime spike.**~~ **DIAGNOSED AND FIXED — one measurement
+   still outstanding.** Resolved from the tester's own Player.log, and the
+   guesswork it replaced is worth remembering:
+   - They run **0.19.3, hosting** (`IsServer=True`) — NOT the 0.18.0 zip. The
+     earlier "they're just on an old build" theory was WRONG; they already had
+     every prior performance fix, which is why the spike survived them.
    - Their log: `total candidates (pieces+trees+logs)=2176` (only 131 of them
      pieces), `burning 50/50, queued 20/20, ground 46/50`. `SpreadPass`
-     compared every candidate to every burner each 0.75s cycle — about a
-     quarter of a million distance checks per cycle, each with a type
-     dispatch and a ZDO lookup. Their measured spikes: 101.9-146.3ms. The
-     arithmetic lands exactly on the symptom.
-   - **0.19.8 is the fix**: a 16m spatial grid over both candidate lists, so a
-     burner queries only the cells its reach touches. 0.19.5 had already cut
-     ~5x of it by moving trees out of the instance list.
-   **OUTSTANDING: 0.19.8 has never run in a game.** It is pushed, tagged and
-   packaged, and it is the only thing shipped that day without live
-   verification — and the riskiest, since it rewrites how spread finds
-   targets. A mistake shows up as fire that burns but never spreads, which no
-   compiler or packaging guard catches. DO NOT hand that zip to a tester
-   before one burn: `startfire 10` near real trees, confirm the front MOVES
-   and `zdoCandidates` stays non-zero. Owner deferred this test to a later
-   session (they were mid-session on their own server).
-   Also pending: a clean redeploy. As of that session the dedicated server was
-   on 0.19.7, the `Default` profile on 0.19.8, and `raveniron` on an
-   unaccounted-for hash — the game and server were running and locked their
-   DLLs. Hash-verify against `bin\Release\net472\FireFront.dll` after copying.
+     compared every candidate to every burner each 0.75s cycle — roughly a
+     quarter of a million distance checks per cycle, each carrying a type
+     dispatch and a ZDO lookup. Measured spikes: 101.9-146.3ms. The arithmetic
+     lands exactly on the symptom.
+   - **0.19.8** put both candidate lists in a 16m spatial grid so a burner only
+     examines the cells its reach touches; **0.19.5** had already cut ~5x by
+     moving trees out of the instance list. VERIFIED, and then stress-proven:
+     `burntheworld` ran **1316 burning objects and 6500 ground cells across 13
+     fires on one saturated core**. The pre-0.19.8 code would have needed ~2.6
+     MILLION checks per cycle for that — the configuration is only reachable
+     because of the grid.
+   - **0.19.12-14** then attacked the OTHER half. The tester's spike was worse
+     *looking toward* the fire than away from it, i.e. rendering, not
+     simulation — and every burning object carried its own realtime Light for
+     its whole burn. Fires now drop to embers, glow and intermittent flare-ups
+     past `SmoulderAfterFraction`. Confirmed by eye ("that reads better") after
+     a first attempt that read as "the fire went out".
+
+   **STILL OUTSTANDING — the only real gap left: nobody has MEASURED whether
+   smouldering buys frames.** It shipped on a sound argument and the owner's
+   visual approval, not a number. CapFrameX is installed on the owner's box and
+   both toggles are live commands, so it is two captures with no restart:
+   `fireset smouldering false` -> capture 60s at a burn -> `fireset smouldering
+   true` -> capture the same spot. Compare P1/P0.2 lows and max frametime. That
+   number is what tells the tester whether their problem is actually solved —
+   and if it does NOT help, the next suspects are the ground damage-zone
+   objects and the felled physics logs, not the particles.
 
 5. **Dedicated FireFront test server — USE THIS, not the Steam install.**
    `C:\Users\donfr\FireFrontTestServer` (created 2026-08-29): a full copy of
    the dedicated server stripped to TWO plugins, FireFront and Server
-   Devcommands, with its own `ff-test.log` and its own BepInEx log. Runs on
-   **port 2458** so it never collides with Ravenrest on 2456.
+   Devcommands, with its own `ff-test.log`. Port **2458** so it never collides
+   with Ravenrest on 2456.
    WHY it exists: the Steam server install is now the live Ravenrest modpack
-   (26 plugins). Two servers sharing that install share one FireFront.dll —
-   so a test server could not run a different build than Ravenrest — and its
+   (26 plugins). Two servers sharing that install share one FireFront.dll — so
+   a test server could not run a different build than Ravenrest — and its
    mandatory-mod list (Jotunn, Seasonality, VikingOS, WardIsLove...) rejected
    the owner's client with "incompatible version" every time. A minimal server
    demands nothing of a client and restores the property CLAUDE.md asks for:
-   a failure there is unambiguously ours.
-   `DebugLogging = true` is set in its config — the `[EVENT]` lines are
-   debug-gated, and without them a failed multi-fire test cannot distinguish
-   "no event created" from "event created but no candidates". Turn it OFF
-   before any frametime measurement; it is noisy by design (0.18.7).
-   Ravenrest's own install is untouched; do not stop it without asking.
+   a failure there is unambiguously ours. Ravenrest's install is untouched;
+   do not stop Ravenrest without asking.
+
+   **START AND STOP IT WITH THE SCRIPTS IN `tools\`, NOT BY HAND:**
+   ```powershell
+   .\tools\start-test-server.ps1     # prints the join code; password 'firetest'
+   .\tools\stop-test-server.ps1      # graceful, and VERIFIES the save
+   ```
+   Both take `-ServerDir` if the install ever moves. Copies also live in the
+   server directory itself.
+
+   **Why they exist, which is the important part.** The original CTRL_BREAK
+   helper lived in a session scratchpad that got cleaned between sessions.
+   Every "graceful stop" after that was launching PowerShell against a file
+   that no longer existed, failing SILENTLY, timing out, and falling through to
+   a force-kill — which skips Valheim's shutdown save. It only failed
+   harmlessly because nobody was connected at the time. So:
+   - `stop-test-server.ps1` fails LOUDLY (a distinct message per failure mode)
+     and confirms "World saved" **from the log**, never from a file mtime —
+     mtime races the write and already produced one false "it didn't save"
+     alarm. It refuses to force-kill unless given `-AllowForceKill`.
+   - `start-test-server.ps1` passes **no `-RedirectStandardOutput`** (Unity's
+     `-logfile` already captures everything, and the redirect can leave the
+     process with no console for CTRL_BREAK to attach to) and **refuses to
+     start a second instance** — double-starting on one port happened twice in
+     one session, and the loser lingers without binding.
+   - `_ctrlbreak-helper.ps1` returns meaningful exit codes. NOTE exit
+     `-1073741510` (STATUS_CONTROL_C_EXIT) is the SUCCESS case: the helper
+     attaches to the target's console, so the break it raises kills the helper
+     too. It looks like a failure and is proof of delivery.
+
+   Test-server state as of 2026-09-03: FireFront 0.19.14, `BurnDurationSeconds`
+   240, `SmoulderAfterFraction` 0.65, smouldering on, both presets off, debug
+   logging off. Password `firetest` (changed from `secret` after a client-side
+   cached-password rejection).
+6. **Tester's other observation, unexamined: fire prods physics hard.** They
+   reported lag on a scale they had not seen in ~7k hours of Valheim, needing
+   three people to cut up a bonfire to recover, and thought they had a
+   screenshot. Plausible mechanism: felled trees spawn physics logs via
+   vanilla's own felling and are UNCAPPED by design, while ground fire also
+   creates damage-zone objects (`GroundDamageMaxConcurrent` caps those).
+   Ask them for the screenshot or a clip — a visible log pile in frame would
+   distinguish physics objects from particle cost immediately, and the two have
+   different fixes.
+
 
 ## Operational facts that cost real time — do not relearn
 
@@ -153,7 +205,7 @@ the memory notes in the assistant's store point here.
   the Linux tester runs MangoHud under Proton — frametime-graph clips are
   gold, ask for them.
 
-## Architecture landmarks from this arc (0.17.2 → 0.19.1)
+## Architecture landmarks from this arc (0.17.2 → 0.19.14)
 
 Wind-strength-scaled spread; igniter attribution; ZDO-layer spread candidates
 (instance scans see NOTHING headless — proven) with a 5s candidate cache;
